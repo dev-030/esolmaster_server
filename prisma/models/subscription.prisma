@@ -1,0 +1,106 @@
+enum SubscriptionPlanType {
+  FREE
+  BASIC
+  PRO
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum BillingStatus {
+  ACTIVE
+  PAST_DUE
+  TRIALING
+  CANCELED
+  CANCELING
+}
+
+model SubscriptionPlan {
+  id String @id @default(nanoid())
+
+  name String
+  type SubscriptionPlanType
+
+  monthlyPrice Int @default(0)
+  annualPrice  Int @default(0)
+
+  stripeProductId      String?
+  stripeMonthlyPriceId String?
+  stripeAnnualPriceId  String?
+
+  maxClasses               Int
+  maxStudentsPerClass      Int
+  maxScheduledTasksInClass Int
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions UserSubscription[]
+  premiumTasks  PlanPremiumTask[]
+
+  @@unique([type])
+}
+
+// Join: which premium tasks are included in which package (subscription plan).
+model PlanPremiumTask {
+  id String @id @default(nanoid())
+
+  planId String
+  plan   SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  taskId String
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([planId, taskId])
+  @@index([planId])
+  @@index([taskId])
+}
+
+model UserSubscription {
+  id String @id @default(nanoid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planId String
+  plan   SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  billingCycle  BillingCycle?
+  billingStatus BillingStatus @default(ACTIVE)
+
+  boughtPrice    Int @default(0)
+  discountAmount Int @default(0)
+  finalPrice     Int @default(0)
+
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+
+  trialStart DateTime?
+  trialEnd   DateTime?
+
+  cancelAtPeriodEnd Boolean   @default(false)
+  canceledAt        DateTime?
+
+  changedByAdminId String?
+  changedAt        DateTime?
+
+  // Reminder dedupe — set once an "expiring soon" notification has been sent
+  // for the current billing period.
+  expiryNotifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId])
+  @@index([billingStatus])
+}

@@ -1,0 +1,14 @@
+model PasswordResetCode {
+  id     String @id @default(nanoid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

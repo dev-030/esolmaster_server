@@ -1,0 +1,48 @@
+model StudentMonthlyStats {
+  id String @id @default(nanoid())
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  month Int
+  year  Int
+
+  completedTasks Int @default(0)
+
+  grammarScoreAvg    Float @default(0)
+  readingScoreAvg    Float @default(0)
+  vocabularyScoreAvg Float @default(0)
+
+  overallScoreAvg Float @default(0)
+
+  xpEarned Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, month, year])
+}
+
+enum SkillType {
+  GRAMMAR
+  READING
+  VOCABULARY
+}
+
+model StudentSkillProgress {
+  id String @id @default(nanoid())
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  skill SkillType
+
+  totalTasks     Int @default(0)
+  completedTasks Int @default(0)
+
+  avgScore   Float @default(0)
+  totalScore Float @default(0) // NEW
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, skill])
+}

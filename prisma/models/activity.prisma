@@ -1,0 +1,77 @@
+enum StudentActivityType {
+  TASK_COMPLETED
+  LEVEL_UP
+  BADGE_EARNED
+}
+
+model StudentActivity {
+  id String @id @default(nanoid())
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  type StudentActivityType
+
+  scheduledTaskId String?
+  scheduledTask   ClassScheduledTask? @relation(fields: [scheduledTaskId], references: [id])
+
+  attemptId String?
+  attempt   Attempt? @relation(fields: [attemptId], references: [id])
+
+  xpEarned Int @default(0)
+
+  message String?
+
+  createdAt DateTime @default(now())
+}
+
+enum BadgeConditionType {
+  COMPLETE_TASKS_WITHIN_DAYS
+  SCORE_PERCENTAGE
+  CONSECUTIVE_SCORE_PERCENTAGE
+  SCORE_PERCENTAGE_IN_TASKS_WITHIN_DAYS
+  XP_WITHIN_TIME
+  STREAK_DAYS
+  ATTEMPT_COUNT
+}
+
+model Badge {
+  id String @id @default(nanoid())
+
+  name        String
+  description String
+  iconName    String
+
+  conditionType   BadgeConditionType
+  conditionConfig Json
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  studentBadges StudentBadge[]
+
+  @@unique([name])
+}
+
+model StudentBadge {
+  id String @id @default(nanoid())
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  badgeId String
+  badge   Badge  @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  progress Int @default(0)
+
+  earnedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, badgeId])
+  @@index([studentId])
+  @@index([badgeId])
+}

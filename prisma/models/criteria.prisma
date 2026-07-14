@@ -1,0 +1,21 @@
+enum AwardingBody {
+  ESB
+  ASCENTIS
+  GATEWAY
+  TRINITY
+}
+
+enum PassLogicType {
+  CRITERIA_ONLY // Used for ESB
+  SCORE_ONLY // Used for Trinity
+  CRITERIA_AND_SCORE // Used for Ascentis and Gateway
+}
+
+model Criterion {
+  id          String     @id @default(nanoid())
+  code        String // e.g., "Ra", "1.1"
+  description String // e.g., "Identify the main points of short texts"
+  questions   Question[] // One criterion can be linked to many questions
+
+  @@unique(code) // Prevents duplicate codes for the same body/level
+}

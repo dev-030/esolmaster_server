@@ -1,0 +1,46 @@
+model Class {
+  id          String  @id @default(nanoid())
+  name        String
+  subject     String
+  description String?
+  color       String
+  maxStudents Int
+
+  teacherId String
+  teacher   User   @relation("TeacherClasses", fields: [teacherId], references: [id])
+
+  students User[] @relation("StudentClasses")
+
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  classTasks ClassTask[]
+}
+
+model ClassTask {
+  id      String   @id @default(nanoid())
+  classId String
+  taskId  String
+  addedAt DateTime @default(now())
+
+  class         Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  task          Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  scheduledTask ClassScheduledTask?
+
+  @@unique([classId, taskId])
+}
+
+model ClassScheduledTask {
+  id          String    @id @default(nanoid())
+  scheduledAt DateTime  @default(now())
+  dueAt       DateTime?
+  isActive    Boolean   @default(true)
+
+  // Reminder dedupe — set once the corresponding notification batch has been sent.
+  openedNotifiedAt     DateTime?
+  endingSoonNotifiedAt DateTime?
+
+  classTaskId       String            @unique
+  classTask         ClassTask         @relation(fields: [classTaskId], references: [id], onDelete: Cascade)
+  attempts          Attempt[]
+  studentActivities StudentActivity[]
+}

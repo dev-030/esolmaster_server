@@ -1,0 +1,50 @@
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model Attempt {
+  id        String @id @default(nanoid())
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id])
+
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id])
+
+  // Link to the specific schedule so we know which class this was for
+  isPassed         Boolean  @default(false)
+  achievedCriteria String[] // Store codes like ["Ra", "Rb"] on completion
+  missingCriteria  String[] // Store codes like ["Rc"] if they failed
+  xpEarned         Int      @default(0)
+  percentage       Float?
+
+  scheduledTaskId String
+  scheduledTask   ClassScheduledTask @relation(fields: [scheduledTaskId], references: [id])
+
+  status               AttemptStatus @default(IN_PROGRESS)
+  currentQuestionIndex Int           @default(0)
+  score                Int           @default(0) // Count of correct answers
+
+  answers StudentAnswer[]
+
+  startedAt         DateTime          @default(now())
+  completedAt       DateTime?
+  studentActivities StudentActivity[]
+
+  @@unique([studentId, scheduledTaskId]) // One attempt per student per scheduled task
+}
+
+model StudentAnswer {
+  id        String  @id @default(nanoid())
+  attemptId String
+  attempt   Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+
+  answerData Json // The raw answer from frontend (e.g. index, string, or array)
+  isCorrect  Boolean
+  answeredAt DateTime @default(now())
+
+  @@unique([attemptId, questionId]) // Prevent answering the same question twice in one attempt
+}
