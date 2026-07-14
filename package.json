@@ -4,6 +4,9 @@
   "description": "",
   "author": "",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "license": "UNLICENSED",
   "scripts": {
     "build": "prisma generate && nest build && tsc-alias",
