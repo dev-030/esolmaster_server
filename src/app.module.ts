@@ -19,11 +19,12 @@ import { AdminModule } from './admin/admin.module';
 import { PaymentModule } from './payment/payment.module';
 import { NotificationModule } from './notification/notification.module';
 import { ReminderModule } from './reminder/reminder.module';
+import { FolderModule } from './folder/folder.module';
 
 @Module({
   imports: [ConfigModule.forRoot({
     isGlobal: true,
-  }), ScheduleModule.forRoot(), AuthModule, PrismaModule, MailModule, GuardModule, TaskModule, UploadModule, ClassModule, AttemptModule, CriteriaModule, AnalyticsModule, StudentModule, BadgeModule, AdminModule, PaymentModule, NotificationModule, ReminderModule],
+  }), ScheduleModule.forRoot(), AuthModule, PrismaModule, MailModule, GuardModule, TaskModule, UploadModule, ClassModule, AttemptModule, CriteriaModule, AnalyticsModule, StudentModule, BadgeModule, AdminModule, PaymentModule, NotificationModule, ReminderModule, FolderModule],
   controllers: [AppController],
   providers: [AppService],
 })

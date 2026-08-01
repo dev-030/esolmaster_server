@@ -100,6 +100,8 @@ export class AuthController {
 
       return res.status(200).json({ success: true });
     } catch (e) {
+      res.clearCookie('accessToken');
+      res.clearCookie('refreshToken');
       return res.status(401).json({ message: 'Refresh failed' });
     }
   }

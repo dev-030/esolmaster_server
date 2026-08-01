@@ -13,6 +13,7 @@ import {
   AwardingBody,
   EntryType,
   TaskStatus,
+  FeedbackMode,
 } from 'src/database/prisma-client/enums';
 
 export class UpdateQuestionDto {
@@ -20,7 +21,7 @@ export class UpdateQuestionDto {
   id!: string;
 
   @IsOptional()
-  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING'])
+  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE'])
   type?: string;
 
   @IsOptional()
@@ -37,7 +38,7 @@ export class UpdateQuestionDto {
 }
 
 export class NewQuestionDto {
-  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING'])
+  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE'])
   type!: string;
 
   @IsInt()
@@ -109,6 +110,10 @@ export class UpdateTaskDto {
   isPublic?: boolean;
 
   @IsOptional()
+  @IsString()
+  folderId?: string;
+
+  @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isPremium?: boolean;
@@ -116,6 +121,15 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsEnum(TaskStatus)
   status?: TaskStatus;
+
+  @IsOptional()
+  @IsInt()
+  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
+  timeLimit?: number;
+
+  @IsOptional()
+  @IsEnum(FeedbackMode)
+  feedbackMode?: FeedbackMode;
 
   @IsOptional()
   @IsString()

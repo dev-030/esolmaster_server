@@ -40,6 +40,8 @@ export class TaskService {
       questions,
       awardingBody,
       passMark,
+      timeLimit,
+      feedbackMode,
     } = dto;
 
     let vocabularyItemsData:
@@ -87,9 +89,12 @@ export class TaskService {
         title,
         type,
         status,
+        folderId: dto.folderId,
         isPublic: role === 'admin',
         // Only admins may mark a task premium.
         isPremium: role === 'admin' ? (dto.isPremium ?? false) : false,
+        timeLimit: timeLimit ?? null,
+        feedbackMode: feedbackMode ?? 'IMMEDIATE',
         createdById: userId,
 
         /**
@@ -404,6 +409,7 @@ export class TaskService {
         where: { id: taskId },
         data: {
           title: dto.title ?? existingTask.title,
+          folderId: dto.folderId !== undefined ? dto.folderId : existingTask.folderId,
           isPublic:
             role === 'admin'
               ? (dto.isPublic ?? existingTask.isPublic)
@@ -416,6 +422,8 @@ export class TaskService {
             role === 'admin'
               ? (dto.status ?? existingTask.status)
               : existingTask.status,
+          timeLimit: dto.timeLimit !== undefined ? dto.timeLimit : existingTask.timeLimit,
+          feedbackMode: dto.feedbackMode !== undefined ? dto.feedbackMode : existingTask.feedbackMode,
         },
       });
 
@@ -530,12 +538,15 @@ export class TaskService {
   }
 
   async findAll(role: string, userId: string, query: TaskQueryDto) {
-    const { page = 1, limit = 10, status } = query;
+    const { page = 1, limit = 10, status, folderId } = query;
 
     const where: any = {};
 
     if (status) where.status = status;
     if (query.isPremium !== undefined) where.isPremium = query.isPremium;
+    if (folderId !== undefined) {
+      where.folderId = folderId === 'null' ? null : folderId;
+    }
 
     if (role === 'teacher') {
       where.OR = [
@@ -601,6 +612,26 @@ export class TaskService {
       where: { id },
       data: { status },
     });
+  }
+
+  async deleteTask(id: string, user: any) {
+    const task = await this.prisma.task.findUnique({
+      where: { id },
+    });
+    
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+
+    if (user.role !== 'admin' && task.createdById !== user.sub) {
+      throw new ForbiddenException('You can only delete your own tasks');
+    }
+
+    await this.prisma.task.delete({
+      where: { id },
+    });
+    
+    return { success: true };
   }
 
   async getAllScheduledTasks(user: any, pagination: PaginationQueryDto) {

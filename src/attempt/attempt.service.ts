@@ -21,6 +21,12 @@ export class AttemptService {
   private calculateFinalResult(attempt: any) {
     const { task, answers, score } = attempt;
     const reading = task.readingContent;
+    
+    const totalMaxScore = task.questions.reduce((sum: number, q: any) => {
+      const marks = (q.config as any)?.marks;
+      return sum + (typeof marks === 'number' ? marks : 1);
+    }, 0);
+    const percentage = totalMaxScore > 0 ? Math.round((score / totalMaxScore) * 100) : 0;
 
     // 1. Get all unique criteria assigned to this test
     const requiredCriteria = [
@@ -49,13 +55,12 @@ export class AttemptService {
 
     // Default: Score-based (for standard tasks, non-reading, or SCORE_ONLY logic)
     if (!reading || reading.passLogic === 'SCORE_ONLY') {
-      const passMark =
-        reading?.passMark ?? Math.floor(task.questions.length * 0.6);
+      const passThreshold = reading?.passMark ?? 60; // default 60%
 
       return {
-        isPassed: score >= passMark,
-        missingCriteria, // Calculated dynamically now
-        achievedCriteria, // Calculated dynamically now
+        isPassed: percentage >= passThreshold,
+        missingCriteria,
+        achievedCriteria,
         requiredCriteria,
       };
     }
@@ -70,12 +75,12 @@ export class AttemptService {
 
       case 'ASCENTIS': // Ascentis Logic
       case 'GATEWAY': // Gateway Logic
-        const reachScore = score >= (reading.passMark ?? 0);
+        const reachScore = percentage >= (reading.passMark ?? 0);
         isPassed = allCriteriaMet && reachScore;
         break;
 
       default:
-        isPassed = score >= (reading.passMark ?? 0);
+        isPassed = percentage >= (reading.passMark ?? 0);
     }
 
     return {
@@ -87,9 +92,13 @@ export class AttemptService {
   }
 
   private buildResult(attempt: any) {
-    const total = attempt.task.questions.length;
+    const totalMaxScore = attempt.task.questions.reduce((sum: number, q: any) => {
+      const marks = (q.config as any)?.marks;
+      return sum + (typeof marks === 'number' ? marks : 1);
+    }, 0);
+    
     const score = attempt.score;
-    const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+    const percentage = totalMaxScore > 0 ? Math.round((score / totalMaxScore) * 100) : 0;
 
     // 1. Prepare Exam Breakdown (Awarding Body Logic)
     // We only include this if the task is a READING task and has an awarding body assigned.
@@ -144,7 +153,7 @@ export class AttemptService {
     return {
       // Basic stats
       score,
-      total,
+      total: totalMaxScore,
       percentage,
       status: attempt.status,
 
@@ -294,14 +303,16 @@ export class AttemptService {
       });
 
       // Update basic stats
-      const newScore = isCorrect ? attempt.score + 1 : attempt.score;
+      const questionMarks = (newAnswer.question.config as any)?.marks;
+      const marksToAward = typeof questionMarks === 'number' ? questionMarks : 1;
+      const newScore = isCorrect ? attempt.score + marksToAward : attempt.score;
 
       // Prepare final results if finished
       let finalUpdateData: any = {
         currentQuestionIndex: isLastQuestion
           ? attempt.currentQuestionIndex
           : { increment: 1 },
-        score: isCorrect ? { increment: 1 } : undefined,
+        score: isCorrect ? { increment: marksToAward } : undefined,
         status: isLastQuestion ? 'COMPLETED' : 'IN_PROGRESS',
         completedAt: isLastQuestion ? new Date() : null,
       };
@@ -324,11 +335,14 @@ export class AttemptService {
         data: finalUpdateData,
       });
       if (isLastQuestion) {
-        const totalQuestions = attempt.task.questions.length;
+        const totalMaxScore = attempt.task.questions.reduce((sum: number, q: any) => {
+          const m = (q.config as any)?.marks;
+          return sum + (typeof m === 'number' ? m : 1);
+        }, 0);
 
         const percentage =
-          totalQuestions > 0
-            ? Math.round((newScore / totalQuestions) * 100)
+          totalMaxScore > 0
+            ? Math.round((newScore / totalMaxScore) * 100)
             : 0;
 
         const xpPerQuestion = attempt.task.xpPerQuestion ?? 5;

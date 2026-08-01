@@ -9,7 +9,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Type, Transform, plainToInstance } from 'class-transformer';
-import { EntryType, TaskStatus } from 'src/database/prisma-client/enums';
+import { EntryType, TaskStatus, FeedbackMode } from 'src/database/prisma-client/enums';
 import { PaginationQueryDto } from 'common/dto/pagination.dto';
 
 export enum TaskType {
@@ -26,7 +26,7 @@ export enum AwardingBody {
 }
 
 export class QuestionDto {
-  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING'])
+  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE'])
   type!: string;
 
   @IsInt()
@@ -61,6 +61,14 @@ export class CreateTaskDto {
   type!: TaskType;
 
   @IsOptional()
+  @IsString()
+  folderId?: string;
+
+  @IsOptional()
+  @IsEnum(TaskStatus)
+  status?: TaskStatus;
+
+  @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
 
@@ -73,6 +81,15 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   organizationId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
+  timeLimit?: number;
+
+  @IsOptional()
+  @IsEnum(FeedbackMode)
+  feedbackMode?: FeedbackMode;
 
   @IsOptional()
   @IsEnum(AwardingBody)
@@ -159,4 +176,8 @@ export class TaskQueryDto extends PaginationQueryDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isPremium?: boolean;
+
+  @IsOptional()
+  @IsString()
+  folderId?: string;
 }

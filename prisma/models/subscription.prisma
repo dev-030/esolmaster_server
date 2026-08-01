@@ -53,7 +53,7 @@ model PlanPremiumTask {
   plan   SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   taskId String
-  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 

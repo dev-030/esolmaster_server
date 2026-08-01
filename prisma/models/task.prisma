@@ -1,22 +1,37 @@
 model Task {
-  id              String       @id @default(nanoid())
+  id              String            @id @default(nanoid())
   title           String
-  xpPerQuestion   Int          @default(5) // NEW
+  xpPerQuestion   Int               @default(5) // NEW
   type            TaskType
-  status          TaskStatus   @default(DRAFT)
-  isPublic        Boolean      @default(false)
-  isPremium       Boolean      @default(false)
+  status          TaskStatus        @default(DRAFT)
+  isPublic        Boolean           @default(false)
+  isPremium       Boolean           @default(false)
+  timeLimit       Int?              // in minutes
+  feedbackMode    FeedbackMode      @default(IMMEDIATE)
   createdById     String
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
   grammarContent  GrammarTask?
   questions       Question[]
   readingContent  ReadingTask?
-  createdBy       User         @relation(fields: [createdById], references: [id])
+  createdBy       User              @relation(fields: [createdById], references: [id])
   vocabularyItems WordItem[]
   classTasks      ClassTask[]
   attempts        Attempt[]
   premiumInPlans  PlanPremiumTask[]
+  folderId        String?
+  folder          Folder?           @relation(fields: [folderId], references: [id])
+}
+
+model Folder {
+  id        String   @id @default(nanoid())
+  name      String
+  parentId  String?
+  parent    Folder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[] @relation("FolderToFolder")
+  tasks     Task[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 enum EntryType {
@@ -90,4 +105,10 @@ enum QuestionType {
   MATCHING
   QUESTION_ANSWER
   ORDERING
+  TRUE_FALSE
+}
+
+enum FeedbackMode {
+  IMMEDIATE
+  AT_END
 }

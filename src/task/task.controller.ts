@@ -10,6 +10,7 @@ import {
   Req,
   UseInterceptors,
   UploadedFiles,
+  Delete,
 } from '@nestjs/common';
 import { TaskService } from './task.service';
 import { AuthGuard } from '@nestjs/passport';
@@ -46,7 +47,9 @@ export class TaskController {
     },
   ) {
     const userId = req.user.sub;
-    const status = req.user.role === 'admin' ? 'APPROVED' : 'PENDING_APPROVAL';
+    const status = createTaskDto.status === 'DRAFT' 
+      ? 'DRAFT' 
+      : (req.user.role === 'admin' ? 'APPROVED' : 'PENDING_APPROVAL');
 
     return this.taskService.createTask(
       createTaskDto,
@@ -126,5 +129,11 @@ export class TaskController {
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.taskService.findOne(id);
+  }
+
+  @Delete(':id')
+  @Roles(['admin', 'teacher'])
+  async remove(@Param('id') id: string, @Req() req) {
+    return this.taskService.deleteTask(id, req.user);
   }
 }
