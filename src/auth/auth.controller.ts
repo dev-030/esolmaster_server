@@ -52,16 +52,18 @@ export class AuthController {
       await this.authService.signin(dto);
     const { password, ...userResponse } = user;
 
+    const isProd = process.env.NODE_ENV === 'production';
+
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
-      secure: true,
+      secure: isProd,
       sameSite: 'lax',
       path: '/',
     });
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: isProd,
       sameSite: 'lax',
       path: '/',
     });
@@ -180,16 +182,20 @@ export class AuthController {
       await this.authService.completeProfile(userId, dto);
     const { password, ...userResponse } = user;
 
+    const isProdProfile = process.env.NODE_ENV === 'production';
+
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
-      secure: true,
+      secure: isProdProfile,
       sameSite: 'lax',
+      path: '/',
     });
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: isProdProfile,
       sameSite: 'lax',
+      path: '/',
     });
 
     return { success: true, userResponse };
