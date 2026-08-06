@@ -14,15 +14,10 @@ export class FolderService {
   }
 
   async findAll(parentId?: string) {
-    if (parentId) {
-      return this.prisma.folder.findMany({
-        where: { parentId },
-        include: { _count: { select: { children: true, tasks: true } } },
-      });
-    }
     return this.prisma.folder.findMany({
-      where: { parentId: null },
+      where: { parentId: parentId ?? null },
       include: { _count: { select: { children: true, tasks: true } } },
+      orderBy: { createdAt: 'asc' },
     });
   }
 
@@ -31,22 +26,33 @@ export class FolderService {
       where: { id },
       include: {
         children: {
-          include: { _count: { select: { children: true, tasks: true } } }
+          include: { _count: { select: { children: true, tasks: true } } },
+          orderBy: { createdAt: 'asc' },
         },
-        tasks: true,
+        tasks: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
     if (!folder) throw new NotFoundException('Folder not found');
+
+    // Resolve the full ancestor chain in ONE raw SQL query using a recursive CTE
+    // instead of firing N separate DB round-trips in a while-loop.
     const ancestors: { id: string; name: string }[] = [];
-    let currentId = folder.parentId;
-    while (currentId) {
-      const parent = await this.prisma.folder.findUnique({
-        where: { id: currentId },
-        select: { id: true, name: true, parentId: true },
-      });
-      if (!parent) break;
-      ancestors.unshift({ id: parent.id, name: parent.name });
-      currentId = parent.parentId;
+    if (folder.parentId) {
+      const rows = await this.prisma.$queryRaw<{ id: string; name: string; depth: number }[]>`
+        WITH RECURSIVE ancestor_chain AS (
+          SELECT id, name, "parentId", 1 AS depth
+          FROM "Folder"
+          WHERE id = ${folder.parentId}::uuid
+          UNION ALL
+          SELECT f.id, f.name, f."parentId", ac.depth + 1
+          FROM "Folder" f
+          INNER JOIN ancestor_chain ac ON f.id = ac."parentId"
+        )
+        SELECT id, name, depth FROM ancestor_chain ORDER BY depth DESC
+      `;
+      ancestors.push(...rows.map(r => ({ id: r.id, name: r.name })));
     }
 
     return { ...folder, ancestors };
