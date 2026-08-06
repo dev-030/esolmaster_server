@@ -11,7 +11,7 @@
   "scripts": {
     "build": "prisma generate && nest build && tsc-alias",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "nest start --entryFile src/main",
+    "start": "prisma migrate deploy && node dist/src/main",
     "start:dev": "prisma generate && nest start --watch --entryFile src/main",
     "start:debug": "nest start --debug --watch --entryFile src/main",
     "start:prod": "prisma migrate deploy && node dist/src/main",
