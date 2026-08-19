@@ -48,7 +48,7 @@ export class AuthController {
     @Body() dto: LoginRequestDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { accessToken, refreshToken, user } =
+    const { accessToken, refreshToken, accessTokenMaxAge, refreshTokenMaxAge, user } =
       await this.authService.signin(dto);
     const { password, ...userResponse } = user;
 
@@ -59,6 +59,7 @@ export class AuthController {
       secure: isProd,
       sameSite: 'lax',
       path: '/',
+      maxAge: accessTokenMaxAge,
     });
 
     res.cookie('refreshToken', refreshToken, {
@@ -66,6 +67,7 @@ export class AuthController {
       secure: isProd,
       sameSite: 'lax',
       path: '/',
+      maxAge: refreshTokenMaxAge,
     });
     return { success: true, userResponse, accessToken, refreshToken };
   }
@@ -92,12 +94,24 @@ export class AuthController {
       if (!refreshToken) throw new UnauthorizedException();
 
       const tokens = await this.authService.refreshToken({ refreshToken });
+      const isProd = process.env.NODE_ENV === 'production';
 
+      // Set new accessToken
       res.cookie('accessToken', tokens.accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax', // Use 'lax' for same-domain or 'none' for cross-site
+        secure: isProd,
+        sameSite: 'lax',
         path: '/',
+        maxAge: tokens.accessTokenMaxAge,
+      });
+
+      // Rotate: set new refreshToken (invalidates old one implicitly)
+      res.cookie('refreshToken', tokens.refreshToken, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: tokens.refreshTokenMaxAge,
       });
 
       return res.status(200).json({ success: true });
@@ -126,9 +140,10 @@ export class AuthController {
     // Set Cookies
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
-      secure: isProd, // Must be false on localhost (HTTP)
-      sameSite: isProd ? 'none' : 'lax', // 'lax' is required for localhost
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       path: '/',
+      maxAge: 5 * 60 * 60 * 1000,
     });
 
     res.cookie('refreshToken', refreshToken, {
@@ -136,6 +151,7 @@ export class AuthController {
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     // Determine redirect URL
@@ -178,7 +194,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const userId = req.user.sub;
-    const { accessToken, refreshToken, user } =
+    const { accessToken, refreshToken, accessTokenMaxAge, refreshTokenMaxAge, user } =
       await this.authService.completeProfile(userId, dto);
     const { password, ...userResponse } = user;
 
@@ -189,6 +205,7 @@ export class AuthController {
       secure: isProdProfile,
       sameSite: 'lax',
       path: '/',
+      maxAge: accessTokenMaxAge,
     });
 
     res.cookie('refreshToken', refreshToken, {
@@ -196,6 +213,7 @@ export class AuthController {
       secure: isProdProfile,
       sameSite: 'lax',
       path: '/',
+      maxAge: refreshTokenMaxAge,
     });
 
     return { success: true, userResponse };

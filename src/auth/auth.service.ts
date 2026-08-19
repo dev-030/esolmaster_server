@@ -26,11 +26,16 @@ export class AuthService {
     });
 
     const refreshToken = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_SECRET,
+      secret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
       expiresIn: '7d',
     });
 
-    return { accessToken, refreshToken };
+    return {
+      accessToken,
+      refreshToken,
+      accessTokenMaxAge: 5 * 60 * 60 * 1000,   // 5h in ms
+      refreshTokenMaxAge: 7 * 24 * 60 * 60 * 1000, // 7d in ms
+    };
   }
 
   async signup(dto: any) {
@@ -334,18 +339,28 @@ export class AuthService {
 
   async refreshToken(dto: any) {
     try {
+      // Use the dedicated refresh secret to verify the token
       const payload = await this.jwtService.verifyAsync(dto.refreshToken, {
-        secret: process.env.JWT_SECRET,
+        secret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
       });
 
-      // IMPORTANT: Remove iat and exp so the new token gets fresh ones
+      // Verify the user still exists in the database
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+      });
+
+      if (!user) {
+        throw new UnauthorizedException('User not found or session expired');
+      }
+
+      // Remove iat and exp so the new token gets fresh timestamps
       const { iat, exp, ...cleanPayload } = payload;
 
+      // Return both new tokens (rotation)
       return this.generateTokens(cleanPayload);
     } catch (error) {
       const err = error as { message?: string };
-      // This will help you see if the refresh token itself is expired
-      console.error('JWT Verification Error:', err.message);
+      console.error('JWT Refresh Verification Error:', err.message);
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }

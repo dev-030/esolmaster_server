@@ -40,7 +40,7 @@ export class NotificationService {
   async findForUser(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
 
-    const [data, total, unreadCount] = await this.prisma.$transaction([
+    const [data, total, unreadCount] = await Promise.all([
       this.prisma.notification.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
