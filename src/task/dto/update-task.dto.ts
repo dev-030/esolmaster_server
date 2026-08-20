@@ -14,6 +14,8 @@ import {
   EntryType,
   TaskStatus,
   FeedbackMode,
+  PassLogicType,
+  TaskType,
 } from 'src/database/prisma-client/enums';
 
 export class UpdateQuestionDto {
@@ -21,7 +23,7 @@ export class UpdateQuestionDto {
   id!: string;
 
   @IsOptional()
-  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE'])
+  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE', 'INSTRUCTION'])
   type?: string;
 
   @IsOptional()
@@ -38,7 +40,7 @@ export class UpdateQuestionDto {
 }
 
 export class NewQuestionDto {
-  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE'])
+  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE', 'INSTRUCTION'])
   type!: string;
 
   @IsInt()
@@ -106,6 +108,10 @@ export class UpdateTaskDto {
   title?: string;
 
   @IsOptional()
+  @IsEnum(TaskType)
+  type?: TaskType;
+
+  @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
 
@@ -138,6 +144,10 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsEnum(AwardingBody)
   awardingBody?: AwardingBody;
+
+  @IsOptional()
+  @IsEnum(PassLogicType)
+  passLogic?: PassLogicType;
 
   @IsOptional()
   @IsInt()

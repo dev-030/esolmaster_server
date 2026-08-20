@@ -108,6 +108,7 @@ export class TaskService {
                   entryType,
                   awardingBody,
                   passMark,
+                  passLogic: dto.passLogic,
                   imageUrl: passageImageUrl,
                 },
               }
@@ -342,6 +343,7 @@ export class TaskService {
           dto.removePassageImage ||
           newPassageImageUrl !== undefined ||
           dto.awardingBody !== undefined ||
+          dto.passLogic !== undefined ||
           dto.passMark !== undefined;
 
         if (shouldUpdateReading) {
@@ -360,6 +362,8 @@ export class TaskService {
                       : existingTask.readingContent.imageUrl,
                 awardingBody:
                   dto.awardingBody ?? existingTask.readingContent.awardingBody,
+                passLogic:
+                  dto.passLogic ?? existingTask.readingContent.passLogic,
                 passMark: dto.passMark ?? existingTask.readingContent.passMark,
               },
             });
@@ -369,6 +373,7 @@ export class TaskService {
                 taskId,
                 content: dto.content ?? '',
                 entryType: dto.entryType ?? [],
+                passLogic: dto.passLogic,
                 imageUrl: newPassageImageUrl,
               },
             });
@@ -409,6 +414,7 @@ export class TaskService {
         where: { id: taskId },
         data: {
           title: dto.title ?? existingTask.title,
+          type: dto.type ?? existingTask.type,
           folderId: dto.folderId !== undefined ? dto.folderId : existingTask.folderId,
           isPublic:
             role === 'admin'

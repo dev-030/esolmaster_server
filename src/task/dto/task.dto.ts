@@ -9,7 +9,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Type, Transform, plainToInstance } from 'class-transformer';
-import { EntryType, TaskStatus, FeedbackMode } from 'src/database/prisma-client/enums';
+import { EntryType, TaskStatus, FeedbackMode, PassLogicType } from 'src/database/prisma-client/enums';
 import { PaginationQueryDto } from 'common/dto/pagination.dto';
 
 export enum TaskType {
@@ -29,7 +29,7 @@ export enum AwardingBody {
 }
 
 export class QuestionDto {
-  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE'])
+  @IsEnum(['MCQ', 'GAP_FILL', 'WORD_BOX_MATCH', 'MATCHING', 'QUESTION_ANSWER', 'ORDERING', 'TRUE_FALSE', 'INSTRUCTION'])
   type!: string;
 
   @IsInt()
@@ -97,6 +97,10 @@ export class CreateTaskDto {
   @IsOptional()
   @IsEnum(AwardingBody)
   awardingBody?: AwardingBody;
+
+  @IsOptional()
+  @IsEnum(PassLogicType)
+  passLogic?: PassLogicType;
 
   @IsOptional()
   @IsInt()
