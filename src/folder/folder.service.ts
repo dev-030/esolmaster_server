@@ -36,23 +36,17 @@ export class FolderService {
     });
     if (!folder) throw new NotFoundException('Folder not found');
 
-    // Resolve the full ancestor chain in ONE raw SQL query using a recursive CTE
-    // instead of firing N separate DB round-trips in a while-loop.
+    // Resolve the full ancestor chain
     const ancestors: { id: string; name: string }[] = [];
-    if (folder.parentId) {
-      const rows = await this.prisma.$queryRaw<{ id: string; name: string; depth: number }[]>`
-        WITH RECURSIVE ancestor_chain AS (
-          SELECT id, name, "parentId", 1 AS depth
-          FROM "Folder"
-          WHERE id = ${folder.parentId}::uuid
-          UNION ALL
-          SELECT f.id, f.name, f."parentId", ac.depth + 1
-          FROM "Folder" f
-          INNER JOIN ancestor_chain ac ON f.id = ac."parentId"
-        )
-        SELECT id, name, depth FROM ancestor_chain ORDER BY depth DESC
-      `;
-      ancestors.push(...rows.map(r => ({ id: r.id, name: r.name })));
+    let currentParentId = folder.parentId;
+    while (currentParentId) {
+      const parent = await this.prisma.folder.findUnique({
+        where: { id: currentParentId },
+        select: { id: true, name: true, parentId: true },
+      });
+      if (!parent) break;
+      ancestors.unshift({ id: parent.id, name: parent.name });
+      currentParentId = parent.parentId;
     }
 
     return { ...folder, ancestors };

@@ -67,20 +67,22 @@ export class AttemptService {
 
     let isPassed = false;
 
-    // 4. Apply Awarding Body Logic (Used for CRITERIA_ONLY or CRITERIA_AND_SCORE logic)
+    // 4. Apply Awarding Body Logic
     switch (reading.awardingBody) {
-      case 'ESB': // ESB Logic: Must meet all criteria
+      case 'ESB': // ESB: Criteria only (allCriteriaMet, no numerical pass mark)
         isPassed = allCriteriaMet;
         break;
 
-      case 'ASCENTIS': // Ascentis Logic
-      case 'GATEWAY': // Gateway Logic
-        const reachScore = percentage >= (reading.passMark ?? 0);
-        isPassed = allCriteriaMet && reachScore;
+      case 'ASCENTIS': // Ascentis: Both score threshold AND all criteria met
+        const reachScoreAscentis = percentage >= (reading.passMark ?? 75);
+        isPassed = allCriteriaMet && reachScoreAscentis;
         break;
 
+      case 'GATEWAY': // Gateway: Marks alone
+      case 'TRINITY': // Trinity: Marks alone
       default:
-        isPassed = percentage >= (reading.passMark ?? 0);
+        isPassed = percentage >= (reading.passMark ?? 60);
+        break;
     }
 
     return {

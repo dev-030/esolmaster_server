@@ -86,6 +86,9 @@ model Question {
 
 enum TaskType {
   READING
+  WRITING
+  LISTENING
+  SPEAKING
   GRAMMAR
   VOCABULARY
 }

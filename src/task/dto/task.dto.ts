@@ -14,6 +14,9 @@ import { PaginationQueryDto } from 'common/dto/pagination.dto';
 
 export enum TaskType {
   READING = 'READING',
+  WRITING = 'WRITING',
+  LISTENING = 'LISTENING',
+  SPEAKING = 'SPEAKING',
   GRAMMAR = 'GRAMMAR',
   VOCABULARY = 'VOCABULARY',
 }

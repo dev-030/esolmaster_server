@@ -12,6 +12,9 @@ model StudentMonthlyStats {
   grammarScoreAvg    Float @default(0)
   readingScoreAvg    Float @default(0)
   vocabularyScoreAvg Float @default(0)
+  writingScoreAvg    Float @default(0)
+  listeningScoreAvg  Float @default(0)
+  speakingScoreAvg   Float @default(0)
 
   overallScoreAvg Float @default(0)
 
@@ -26,6 +29,9 @@ enum SkillType {
   GRAMMAR
   READING
   VOCABULARY
+  WRITING
+  LISTENING
+  SPEAKING
 }
 
 model StudentSkillProgress {
