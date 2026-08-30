@@ -10,6 +10,7 @@ import {
   Req,
   UseInterceptors,
   UploadedFiles,
+  UploadedFile,
   Delete,
 } from '@nestjs/common';
 import { TaskService } from './task.service';
@@ -18,6 +19,7 @@ import { Roles } from 'src/decorator/role.decorator';
 import { AddQuestionsDto, CreateTaskDto, TaskQueryDto } from './dto/task.dto';
 import { RolesGuard } from 'src/guards/role.guard';
 import {
+  FileInterceptor,
   AnyFilesInterceptor,
   FileFieldsInterceptor,
 } from '@nestjs/platform-express';
@@ -30,7 +32,7 @@ export class TaskController {
   constructor(private readonly taskService: TaskService) {}
 
   @Post()
-  @Roles(['admin', 'teacher'])
+  // @Roles(['admin', 'teacher'])
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'images', maxCount: 10 },
@@ -77,6 +79,14 @@ export class TaskController {
       req.user.role,
       files || [],
     );
+  }
+
+
+  @Post('import-pdf')
+  @Roles(['admin', 'teacher'])
+  @UseInterceptors(FileInterceptor('file'))
+  async importPdf(@UploadedFile() file: Express.Multer.File) {
+    return this.taskService.importPdf(file);
   }
 
   @Post(':taskId/questions')

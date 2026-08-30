@@ -1,3 +1,5 @@
+import axios from 'axios';
+import { parseOffice } from 'officeparser';
 import {
   ConflictException,
   ForbiddenException,
@@ -822,5 +824,160 @@ const where =
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async importPdf(file: Express.Multer.File) {
+    if (!file) throw new NotFoundException('No file provided');
+    
+    console.log('--- PDF RECEIVED FOR OCR ---');
+    console.log('File size:', file.size, 'bytes');
+const extension = file.originalname.split('.').pop()?.toLowerCase();
+    let rawText = "";
+    
+    if (extension === 'doc') {
+      const WordExtractor = require('word-extractor');
+      const extractor = new WordExtractor();
+      const extracted = await extractor.extract(file.buffer);
+      rawText = extracted.getBody();
+    } else {
+      const ast = await parseOffice(file.buffer, { fileType: extension as any });
+      rawText = ast.toText();
+    }
+    const prompt = `
+You are an expert ESOL teacher extracting an exam paper into JSON.
+We have provided you with the OCR text of the exam paper.
+
+We need two arrays in the root object: "sections" and "questions".
+
+1. "sections": These represent the main tasks (e.g. "Task 1", "Task 2").
+Do NOT extract the reading passages or context text for these sections. The user will manually attach screenshots of the reading passages later.
+"sections" should be an array of objects matching:
+{
+  "id": "generate-a-unique-uuid-here",
+  "title": "Task 1 - Reading",
+  "instruction": "Read the text and answer the questions.",
+  "content": "" // Leave this empty as the user will provide an image instead
+}
+
+2. "questions": Extract all the actual questions the student must answer.
+
+CRITICAL CLEANUP RULES:
+- Strip leading question numbers (e.g. remove "7 " from the start of the question).
+- Do NOT include option letters (a, b, c) in the options array.
+- HOWEVER, you MUST strictly preserve all other text and special symbols (especially currency symbols like £, $, or math signs) exactly as they appear in the raw text. Do not drop them!
+
+"questions" should be an array of objects matching:
+{
+  "id": "generate-a-unique-uuid-here",
+  "sectionId": "the-uuid-of-the-section-this-belongs-to",
+  "type": "MCQ", // MUST be one of: MCQ, TRUE_FALSE, GAP_FILL
+  "content": "<p>The question text</p>",
+  "marks": 1,
+  "config": {
+    "options": ["Option 1", "Option 2"],
+    "correctIndex": 0
+  }
+}
+
+Exam Text:
+${rawText}
+
+Format as strict JSON without any markdown code blocks.
+`;
+
+    try {
+      console.log('Attempt 1: Calling Gemini 3.7 Flash (High Thinking)...');
+      
+      let response;
+      let retries = 2;
+      let delay = 2000;
+      let success = false;
+      let responseText = "";
+
+      while (retries >= 0) {
+        try {
+          response = await axios.post(
+            'https://generativelanguage.googleapis.com/v1beta/interactions', 
+            {
+              model: "gemini-3.7-flash",
+              input: prompt,
+              generation_config: { 
+                thinking_level: "high"
+              }
+            }, 
+            {
+              headers: {
+                'x-goog-api-key': process.env.GEMINI_API_KEY,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          success = true;
+          break;
+        } catch (error: any) {
+          const isCapacityError = error.response?.data?.error?.message?.includes('high demand') || error.response?.status === 429 || error.response?.status === 503;
+          
+          if (retries === 0 || !isCapacityError) {
+            console.log('Gemini 3.7 Flash failed permanently or with non-capacity error. Triggering fallback...');
+            break;
+          }
+          
+          console.log(`Capacity issue on Gemini 3.7. Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2;
+          retries--;
+        }
+      }
+      
+      if (success && response && response.data && response.data.steps) {
+        for (const step of response.data.steps) {
+          if (step.type === "model_output" && step.content) {
+            for (const contentBlock of step.content) {
+              if (contentBlock.type === "text") {
+                responseText += contentBlock.text;
+              }
+            }
+          }
+        }
+        console.log('--- GEMINI 3.7 SUCCESS ---');
+      } else {
+        // Fallback to Gemini 3.6 Flash without Thinking
+        console.log('Attempt 2: Fallback to Gemini 3.6 Flash (Standard)...');
+        const fallbackResponse = await axios.post(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent', 
+          {
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { text: prompt }
+                ]
+              }
+            ],
+            generationConfig: { 
+              response_mime_type: "application/json"
+            }
+          }, 
+          {
+            headers: {
+              'x-goog-api-key': process.env.GEMINI_API_KEY,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        responseText = fallbackResponse.data.candidates[0].content.parts[0].text;
+        console.log('--- GEMINI 3.6 FALLBACK SUCCESS ---');
+      }
+      
+      const match = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (match) {
+        responseText = match[1];
+      }
+      responseText = responseText.trim();
+      return JSON.parse(responseText);
+    } catch (finalError: any) {
+      console.error('API Error (Both Models Failed):', finalError.response?.data || finalError.message);
+      throw new Error('Failed to process PDF with AI');
+    }
   }
 }

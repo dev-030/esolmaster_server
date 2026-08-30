@@ -1,0 +1,11 @@
+[providers]
+node = {}
+
+[phases.setup]
+nixPkgs = ["nodejs", "python3"]
+
+[phases.install]
+cmds = [
+  "npm install",
+  "python3 -m pip install 'markitdown[all]' --break-system-packages"
+]

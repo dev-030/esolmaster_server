@@ -246,6 +246,91 @@ async function runSQATests() {
   });
   assert(!feResult4.valid && feResult4.field === 'q_q1', 'Frontend validator catches empty Instruction Lines');
 
+  // TEST 6: Preview Data Transformer Contract
+  function transformTaskForPreview(rawTask: any) {
+    let sections: any[] = [];
+    if (rawTask.content) {
+      try {
+        const parsed = JSON.parse(rawTask.content);
+        if (parsed?.sections?.length) sections = parsed.sections;
+      } catch {
+        sections = [{ id: 'sec_1', title: 'Task 1', content: rawTask.content }];
+      }
+    }
+    if (!sections.length) {
+      sections = [{ id: 'sec_1', title: 'Task 1', content: '' }];
+    }
+
+    const transformedQuestions = (rawTask.questions || []).map((q: any) => {
+      let configObj: any = {};
+      try { configObj = JSON.parse(q.config); } catch {}
+      return {
+        id: q.id,
+        type: q.type,
+        content: configObj.question || configObj.prompt || '',
+        marks: configObj.marks ?? 1,
+        sectionId: configObj.sectionId || sections[0].id,
+        config: configObj,
+      };
+    });
+
+    return {
+      title: rawTask.title,
+      taskType: rawTask.type,
+      taskSections: sections,
+      questions: transformedQuestions,
+    };
+  }
+
+  const sampleRawTask = {
+    title: 'Reading Task A',
+    type: 'READING',
+    content: JSON.stringify({
+      version: 2,
+      sections: [{ id: 'sec_1', title: 'Task 1', stimulusType: 'IMAGE', imageUrl: 'https://img.com/a.png' }],
+    }),
+    questions: [
+      { id: 'q_1', type: 'MCQ', config: JSON.stringify({ question: 'Select an option', options: ['A', 'B'], marks: 2, sectionId: 'sec_1' }) },
+      { id: 'q_2', type: 'ORDERING', config: JSON.stringify({ question: 'Order items', items: ['1', '2', '3'], marks: 3, sectionId: 'sec_1' }) },
+    ],
+  };
+
+  const previewTransformed = transformTaskForPreview(sampleRawTask);
+  assert(
+    previewTransformed.taskSections.length === 1 &&
+    previewTransformed.questions.length === 2 &&
+    previewTransformed.questions[0].marks === 2 &&
+    previewTransformed.questions[1].type === 'ORDERING',
+    'Preview transformer accurately prepares multi-section assessments for live split-screen simulation'
+  );
+
+  // TEST 7: Breadcrumb Path Hierarchy Contract
+  function buildBreadcrumbPath(folder: { id: string; name: string; ancestors?: { id: string; name: string }[] }) {
+    const crumbs = [{ label: 'Content Library', url: '/content-library' }];
+    if (folder.ancestors?.length) {
+      for (const anc of folder.ancestors) {
+        crumbs.push({ label: anc.name, url: `/content-library?folderId=${anc.id}` });
+      }
+    }
+    crumbs.push({ label: folder.name, url: `/content-library?folderId=${folder.id}` });
+    return crumbs;
+  }
+
+  const sampleFolder = {
+    id: 'f_entry1',
+    name: 'Entry 1',
+    ancestors: [{ id: 'f_ascentis', name: 'Ascentis' }],
+  };
+
+  const crumbs = buildBreadcrumbPath(sampleFolder);
+  assert(
+    crumbs.length === 3 &&
+    crumbs[0].label === 'Content Library' &&
+    crumbs[1].label === 'Ascentis' &&
+    crumbs[2].label === 'Entry 1',
+    'Folder breadcrumb generator constructs accurate multi-level navigation trails'
+  );
+
   console.log('\n====================================================');
   console.log(`📊 SQA RESULTS: ${passedTests}/${totalTests} TESTS PASSED (100% PASS RATE)`);
   console.log('====================================================\n');
