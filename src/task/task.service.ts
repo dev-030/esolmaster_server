@@ -889,7 +889,7 @@ Rules for all questions:
 - Every "sectionId" MUST exactly match the "id" of one of the sections you created in Step 1.
 - Strip leading question numbers (e.g. remove "1." or "7 " from the start).
 - Preserve special symbols exactly as written (£, $, %, &, @, –, —).
-- Wrap question text in <p></p> HTML tags.
+
 - Default "marks" to 1 unless the paper states otherwise.
 - If this is a Tutor Copy with printed answers, set the correct "correctIndex" based on the answer key. Otherwise set "correctIndex" to 0 as a placeholder.
 
@@ -904,7 +904,7 @@ Format:
   "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
   "sectionId": "the-matching-section-id",
   "type": "TRUE_FALSE",
-  "content": "<p>The statement as written in the paper.</p>",
+  "content": "The statement as written in the paper.",
   "marks": 1,
   "config": {
     "options": ["True", "False"],
@@ -920,7 +920,7 @@ Format:
   "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
   "sectionId": "the-matching-section-id",
   "type": "MCQ",
-  "content": "<p>The question text.</p>",
+  "content": "The question text.",
   "marks": 1,
   "config": {
     "options": ["Option text 1", "Option text 2", "Option text 3", "Option text 4"],
@@ -937,7 +937,7 @@ Format with options:
   "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
   "sectionId": "the-matching-section-id",
   "type": "GAP_FILL",
-  "content": "<p>The sentence with _____ for the blank.</p>",
+  "content": "The sentence with _____ for the blank.",
   "marks": 1,
   "config": {
     "options": ["word1", "word2", "word3"]
@@ -949,7 +949,7 @@ Format without options:
   "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
   "sectionId": "the-matching-section-id",
   "type": "GAP_FILL",
-  "content": "<p>The sentence with _____ for the blank.</p>",
+  "content": "The sentence with _____ for the blank.",
   "marks": 1
 }
 
@@ -960,7 +960,7 @@ Format:
   "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
   "sectionId": "the-matching-section-id",
   "type": "QUESTION_ANSWER",
-  "content": "<p>The full question as written.</p>",
+  "content": "The full question as written.",
   "marks": 1
 }
 
@@ -979,7 +979,7 @@ Use QUESTION_ANSWER format:
   "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
   "sectionId": "the-matching-section-id",
   "type": "QUESTION_ANSWER",
-  "content": "<p>What is the postcode? Write it below.</p>",
+  "content": "What is the postcode? Write it below.",
   "marks": 1
 }
 
