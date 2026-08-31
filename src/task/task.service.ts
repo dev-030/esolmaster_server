@@ -834,16 +834,20 @@ const where =
     // Parse the document text
     const extension = file.originalname.split('.').pop()?.toLowerCase();
     let rawText = '';
-    if (extension === 'txt') {
-      rawText = file.buffer.toString('utf-8');
-    } else if (extension === 'doc') {
-      const WordExtractor = require('word-extractor');
-      const extracted = await new WordExtractor().extract(file.buffer);
-      rawText = extracted.getBody();
-    } else {
-      const { parseOffice } = require('officeparser');
-      const ast = await parseOffice(file.buffer, { fileType: extension as any });
-      rawText = ast.toText();
+    
+    // Only run local extraction if we are using Gemini (or not OpenAI)
+    if (process.env.AI_PROVIDER !== 'openai') {
+      if (extension === 'txt') {
+        rawText = file.buffer.toString('utf-8');
+      } else if (extension === 'doc') {
+        const WordExtractor = require('word-extractor');
+        const extracted = await new WordExtractor().extract(file.buffer);
+        rawText = extracted.getBody();
+      } else {
+        const { parseOffice } = require('officeparser');
+        const ast = await parseOffice(file.buffer, { fileType: extension as any });
+        rawText = ast.toText();
+      }
     }
 
     const prompt = `You are an expert UK ESOL exam paper parser. Your task is to extract a structured JSON representation from the OCR text of an exam paper.
@@ -1007,7 +1011,7 @@ Return only the raw JSON object. No markdown. No explanation. No code fences.`;
 
     if (process.env.AI_PROVIDER === 'openai') {
       try {
-        responseText = await this.openaiService.extractPdf(prompt);
+        responseText = await this.openaiService.extractPdf(prompt, file);
       } catch (err: any) {
         console.error('OpenAI failed:', err.response?.data || err.message);
         throw err;
