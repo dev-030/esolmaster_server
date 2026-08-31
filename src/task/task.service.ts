@@ -964,14 +964,22 @@ Format:
   "marks": 1
 }
 
-### INSTRUCTION
-Use when: The question asks the student to physically interact with the paper (e.g. "Underline the postcode.", "Circle the correct word.", "Draw a line to match.").
-Format:
+### INSTRUCTION (Convert to QUESTION_ANSWER)
+IMPORTANT: This is a digital platform. Students read the passage as an image and cannot physically underline, circle, or draw on the paper. Therefore, NEVER output type "INSTRUCTION". Instead, convert all such questions into QUESTION_ANSWER by rephrasing them as a written question.
+
+Conversion rules:
+- "Underline the postcode." → "What is the postcode? Write it below."
+- "Circle the telephone number." → "What is the telephone number? Write it below."
+- "Underline the date in the text." → "What is the date? Write it below."
+- "Circle the word that means X." → "Which word in the text means X? Write it below."
+- Follow this pattern: identify WHAT the student is supposed to find, then rephrase as "What is the [thing]? Write it below."
+
+Use QUESTION_ANSWER format:
 {
   "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
   "sectionId": "the-matching-section-id",
-  "type": "INSTRUCTION",
-  "content": "<p>The instruction as written.</p>",
+  "type": "QUESTION_ANSWER",
+  "content": "<p>What is the postcode? Write it below.</p>",
   "marks": 1
 }
 
