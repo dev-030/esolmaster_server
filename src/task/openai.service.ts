@@ -109,11 +109,9 @@ export class OpenAIService {
       text: { 
         format: { 
           type: 'json_schema',
-          json_schema: {
-            name: "esol_paper_schema",
-            strict: true,
-            schema: esolSchema
-          }
+          name: "esol_paper_schema",
+          strict: true,
+          schema: esolSchema
         } 
       },
       reasoning: { effort: 'minimal' },
