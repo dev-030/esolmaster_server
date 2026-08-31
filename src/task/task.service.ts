@@ -844,55 +844,67 @@ const where =
       rawText = ast.toText();
     }
 
-    const prompt = `You are an expert ESOL teacher extracting an exam paper into JSON.
-CONTEXT: These are official UK English ESOL (English for Speakers of Other Languages) Skills for Life examination papers. The text may come from various UK awarding bodies such as Ascentis, ESB (English Speaking Board), Gateway, or Trinity. The papers cover levels from Entry 1 to Level 2. The text may contain Adult ESOL Core Curriculum references (e.g., Rt/E1.1a) which are often found in Tutor Copies. Please process the text keeping this context in mind to accurately identify exam tasks, question formats, and answer keys.
+    const prompt = `You are an expert UK ESOL exam paper parser. Your task is to extract a structured JSON representation from the OCR text of an exam paper.
 
-We have provided you with the OCR text of the exam paper.
+## CONTEXT
+These are official UK ESOL (English for Speakers of Other Languages) Skills for Life examination papers used in adult education. They are produced by UK awarding bodies including:
+- **Ascentis** – uses criteria codes like 1.1, 1.2, 2.1, 3.1, 3.2, 3.3, 3.4, 4.1
+- **ESB (English Speaking Board)** – uses codes like 1.1, 3.1, 4.1 etc. in a grid on the cover page
+- **Gateway Qualifications**
+- **Trinity College London**
 
-We need two arrays in the root object: "sections" and "questions".
+Papers are structured into Tasks (Task 1, Task 2, Task 3). Each Task has a short reading passage and 6–8 questions. Papers range from Entry Level 1 to Level 2.
 
-1. "sections": These represent the main tasks (e.g. "Task 1", "Task 2").
-Do NOT extract the reading passages or context text for these sections. The user will manually attach screenshots of the reading passages later.
-"sections" should be an array of objects matching:
+Some papers are **Tutor / Assessor Copies** — these include printed answer keys below each question (e.g. "Answer: c having a holiday" or "Answer: True"). If you see these, extract the correct answer and set correctIndex accordingly.
+
+## OUTPUT FORMAT
+Return a single JSON object with exactly two arrays: "sections" and "questions". No markdown, no code fences — raw JSON only.
+
+---
+
+## STEP 1 — Extract "sections"
+Each section corresponds to one Task in the paper (e.g. "Task 1", "Task 2", "Task 3").
+
+Rules:
+- The "title" is exactly what the paper says (e.g. "Task 1", "Task 2").
+- The "instruction" is the task instruction (e.g. "Read the postcard. Then answer questions 1 to 8.").
+- Do NOT include the reading passage text in "content" — leave it as an empty string "". The teacher will attach reading images separately.
+- Generate a proper random UUID v4 for every "id".
+
+Section format:
 {
-  "id": "generate-a-unique-uuid-here",
-  "title": "Task 1 - Reading",
+  "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+  "title": "Task 1",
   "instruction": "Read the text and answer the questions.",
   "content": ""
 }
 
-2. "questions": Extract all the actual questions the student must answer.
+---
 
-CRITICAL CLEANUP RULES:
-- Strip leading question numbers (e.g. remove "7 " or "Q1." from the start of the question text).
-- Preserve all special symbols (£, $, math signs) exactly as they appear.
-- Determine the question type from the source text and assign the correct "type" enum:
-  - If the text has "True" and "False" options (e.g. "Is this true or false?"), set "type": "TRUE_FALSE".
-  - If the text provides multiple choices (like a, b, c, d) and asks to "Tick one box" or "Circle the letter", set "type": "MCQ". Do NOT include the option letters (a, b, c) in the extracted options array.
-  - If there is a blank space or line in the middle of a sentence for the student to fill in (e.g., "The weather is _______ today."), set "type": "GAP_FILL".
-  - If the text asks the student to do something on the paper like "Underline the postcode", "Circle the word", set "type": "INSTRUCTION".
-  - If it is an open question where the student must write their own text answer on a line (e.g. "What house number does Jane live at? _______"), set "type": "QUESTION_ANSWER" and omit the "config" property.
+## STEP 2 — Extract "questions"
+Extract every question a student must answer. Do NOT extract answer keys, marking grids, instructions to invigilators, page numbers, centre information, candidate details fields, or Adult ESOL Core Curriculum reference codes (e.g. Rt/E1.1a, Rs/E1.1a–b).
 
-"questions" should be an array of objects.
-For MCQ questions, use this format:
+Rules for all questions:
+- Generate a proper random UUID v4 for every "id".
+- Every "sectionId" MUST exactly match the "id" of one of the sections you created in Step 1.
+- Strip leading question numbers (e.g. remove "1." or "7 " from the start).
+- Preserve special symbols exactly as written (£, $, %, &, @, –, —).
+- Wrap question text in <p></p> HTML tags.
+- Default "marks" to 1 unless the paper states otherwise.
+- If this is a Tutor Copy with printed answers, set the correct "correctIndex" based on the answer key. Otherwise set "correctIndex" to 0 as a placeholder.
+
+---
+
+## QUESTION TYPE DECISION RULES
+
+### TRUE_FALSE
+Use when: The question presents a statement and asks if it is True or False, or asks "Yes/No" (e.g. "Is this true or false?", "Tick True or False", "Can you pay by card? Yes No").
+Format:
 {
-  "id": "generate-a-unique-uuid-here",
-  "sectionId": "the-uuid-of-the-section-this-belongs-to",
-  "type": "MCQ",
-  "content": "<p>The question text</p>",
-  "marks": 1,
-  "config": {
-    "options": ["Option 1", "Option 2"],
-    "correctIndex": 0
-  }
-}
-
-For TRUE_FALSE questions, use this format:
-{
-  "id": "generate-a-unique-uuid-here",
-  "sectionId": "the-uuid-of-the-section-this-belongs-to",
+  "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+  "sectionId": "the-matching-section-id",
   "type": "TRUE_FALSE",
-  "content": "<p>The statement text (e.g. Maria is buying a dress.)</p>",
+  "content": "<p>The statement as written in the paper.</p>",
   "marks": 1,
   "config": {
     "options": ["True", "False"],
@@ -900,31 +912,86 @@ For TRUE_FALSE questions, use this format:
   }
 }
 
-For GAP_FILL questions, use this format:
+### MCQ
+Use when: The question lists multiple labelled options (a, b, c, d or A, B, C, D) and asks to "Tick one box", "Circle the letter", or "Choose the correct answer".
+- Do NOT include the option letters (a, b, c) in the extracted options array — just the text.
+Format:
 {
-  "id": "generate-a-unique-uuid-here",
-  "sectionId": "the-uuid-of-the-section-this-belongs-to",
-  "type": "GAP_FILL",
-  "content": "<p>The sentence with the _____ gap.</p>",
+  "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+  "sectionId": "the-matching-section-id",
+  "type": "MCQ",
+  "content": "<p>The question text.</p>",
   "marks": 1,
   "config": {
-    "options": ["Option 1", "Option 2"] // ONLY IF OPTIONS ARE PROVIDED in the text
+    "options": ["Option text 1", "Option text 2", "Option text 3", "Option text 4"],
+    "correctIndex": 0
   }
 }
 
-For QUESTION_ANSWER (open-ended short answers) or INSTRUCTION, use this format:
+### GAP_FILL
+Use when: A sentence has a blank in the middle that the student must fill in. Blanks may appear as underscores (_______), a dotted line, or empty space within a sentence.
+- If the paper provides word choices for the blank, include them in options.
+- If no choices are given, omit the "config" property entirely.
+Format with options:
 {
-  "id": "generate-a-unique-uuid-here",
-  "sectionId": "the-uuid-of-the-section-this-belongs-to",
-  "type": "QUESTION_ANSWER", // or "INSTRUCTION"
-  "content": "<p>The question or instruction text</p>",
+  "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+  "sectionId": "the-matching-section-id",
+  "type": "GAP_FILL",
+  "content": "<p>The sentence with _____ for the blank.</p>",
+  "marks": 1,
+  "config": {
+    "options": ["word1", "word2", "word3"]
+  }
+}
+
+Format without options:
+{
+  "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+  "sectionId": "the-matching-section-id",
+  "type": "GAP_FILL",
+  "content": "<p>The sentence with _____ for the blank.</p>",
   "marks": 1
 }
+
+### QUESTION_ANSWER
+Use when: The question asks for a short written answer (e.g. "What house number does Jane live at?", "Write the word.", "Write the time."). There are no multiple choice options.
+Format:
+{
+  "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+  "sectionId": "the-matching-section-id",
+  "type": "QUESTION_ANSWER",
+  "content": "<p>The full question as written.</p>",
+  "marks": 1
+}
+
+### INSTRUCTION
+Use when: The question asks the student to physically interact with the paper (e.g. "Underline the postcode.", "Circle the correct word.", "Draw a line to match.").
+Format:
+{
+  "id": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+  "sectionId": "the-matching-section-id",
+  "type": "INSTRUCTION",
+  "content": "<p>The instruction as written.</p>",
+  "marks": 1
+}
+
+---
+
+## IGNORE COMPLETELY
+- Cover page details: candidate name, date, centre name, booking number, candidate number
+- Invigilator instructions: "Do not open this paper until...", "You must not use a dictionary..."
+- Marking grids and criteria tables on the cover
+- Page headers and footers (e.g. "Page 2 of 7", "Version 1.0, Oct 19, BM, Set F Entry 1")
+- Adult ESOL Core Curriculum codes (e.g. Rt/E1.1a, Rw/E1.3b)
+- Ascentis/ESB criteria tick boxes and assessor signature blocks
+- Any text that is clearly part of the reading passage context (not a question)
+
+---
 
 Exam Text:
 ${rawText}
 
-Format as strict JSON without any markdown code blocks.`;
+Return only the raw JSON object. No markdown. No explanation. No code fences.`;
 
     const geminiHeaders = {
       'x-goog-api-key': process.env.GEMINI_API_KEY,
