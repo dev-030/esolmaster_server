@@ -45,9 +45,12 @@ export class OpenAIService {
 
     console.log('SUCCESS: OpenAI GPT-5.6 Luna');
     
-    // In the new Responses API, the output is typically nested in the response structure
-    // Since I don't know the exact schema, I will try standard access paths or assume it matches completions
-    const responseText = (response as any).output?.[0]?.content?.[0]?.text || (response as any).choices?.[0]?.message?.content;
+    // The Responses API puts the text directly on the root object
+    const responseText = (response as any).output_text || (response as any).choices?.[0]?.message?.content || "";
+    
+    if (!responseText) {
+      console.error('Empty response from OpenAI. Full object:', JSON.stringify(response, null, 2));
+    }
     
     // Clean up the file to save storage space
     try {
