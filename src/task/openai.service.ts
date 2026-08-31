@@ -40,7 +40,7 @@ export class OpenAIService {
           }
         ]
       }],
-      text: { format: 'json_object' }
+      text: { format: { type: 'json_object' } }
     } as any);
 
     console.log('SUCCESS: OpenAI GPT-5.6 Luna');
