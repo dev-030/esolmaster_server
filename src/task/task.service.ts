@@ -832,7 +832,9 @@ const where =
     // Parse the document text
     const extension = file.originalname.split('.').pop()?.toLowerCase();
     let rawText = '';
-    if (extension === 'doc') {
+    if (extension === 'txt') {
+      rawText = file.buffer.toString('utf-8');
+    } else if (extension === 'doc') {
       const WordExtractor = require('word-extractor');
       const extracted = await new WordExtractor().extract(file.buffer);
       rawText = extracted.getBody();
@@ -862,10 +864,13 @@ Do NOT extract the reading passages or context text for these sections. The user
 
 CRITICAL CLEANUP RULES:
 - Strip leading question numbers (e.g. remove "7 " from the start of the question).
-- Do NOT include option letters (a, b, c) in the options array.
 - Preserve all special symbols (£, $, math signs) exactly as they appear.
+- Determine the question type from the source text:
+  - If the text provides multiple choices (like a, b, c), set "type": "MCQ". Do NOT include the option letters (a, b, c) in the extracted options array.
+  - If it is an open question where the student must write their own answer (no options provided), set "type": "QUESTION_ANSWER" and omit the "config" property.
 
-"questions" should be an array of objects matching:
+"questions" should be an array of objects.
+For MCQ questions, use this format:
 {
   "id": "generate-a-unique-uuid-here",
   "sectionId": "the-uuid-of-the-section-this-belongs-to",
@@ -876,6 +881,15 @@ CRITICAL CLEANUP RULES:
     "options": ["Option 1", "Option 2"],
     "correctIndex": 0
   }
+}
+
+For open-ended questions, use this format:
+{
+  "id": "generate-a-unique-uuid-here",
+  "sectionId": "the-uuid-of-the-section-this-belongs-to",
+  "type": "QUESTION_ANSWER",
+  "content": "<p>The open question text</p>",
+  "marks": 1
 }
 
 Exam Text:

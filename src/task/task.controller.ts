@@ -83,7 +83,7 @@ export class TaskController {
 
 
   @Post('import-pdf')
-  @Roles(['admin', 'teacher'])
+  // @Roles(['admin', 'teacher'])
   @UseInterceptors(FileInterceptor('file'))
   async importPdf(@UploadedFile() file: Express.Multer.File) {
     return this.taskService.importPdf(file);
