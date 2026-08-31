@@ -17,12 +17,14 @@ import { UploadService } from 'src/upload/upload.service';
 import { QuestionType } from 'src/database/prisma-client/enums';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { PaginationQueryDto } from 'common/dto/pagination.dto';
+import { OpenAIService } from './openai.service';
 
 @Injectable()
 export class TaskService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
+    private readonly openaiService: OpenAIService,
   ) {}
 
   async createTask(
@@ -1001,33 +1003,42 @@ ${rawText}
 
 Return only the raw JSON object. No markdown. No explanation. No code fences.`;
 
-    const geminiHeaders = {
-      'x-goog-api-key': process.env.GEMINI_API_KEY,
-      'Content-Type': 'application/json',
-    };
-
     let responseText = '';
 
-    try {
-      // Primary: Gemini 3.6 Flash (fast & cheap)
-      console.log('Trying Gemini 3.6 Flash...');
-      const res = await axios.post(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent',
-        { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
-        { headers: geminiHeaders, timeout: 90000 }
-      );
-      responseText = res.data.candidates[0].content.parts[0].text;
-      console.log('SUCCESS: Gemini 3.6 Flash');
-    } catch (err: any) {
-      // Fallback: Gemini 3.1 Pro Preview
-      console.log(`Primary failed (${err.response?.status || err.code}). Falling back to Gemini 3.1 Pro...`);
-      const res = await axios.post(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent',
-        { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
-        { headers: geminiHeaders, timeout: 90000 }
-      );
-      responseText = res.data.candidates[0].content.parts[0].text;
-      console.log('SUCCESS: Gemini 3.1 Pro (fallback)');
+    if (process.env.AI_PROVIDER === 'openai') {
+      try {
+        responseText = await this.openaiService.extractPdf(prompt);
+      } catch (err: any) {
+        console.error('OpenAI failed:', err.response?.data || err.message);
+        throw err;
+      }
+    } else {
+      const geminiHeaders = {
+        'x-goog-api-key': process.env.GEMINI_API_KEY,
+        'Content-Type': 'application/json',
+      };
+
+      try {
+        // Primary: Gemini 3.6 Flash (fast & cheap)
+        console.log('Trying Gemini 3.6 Flash...');
+        const res = await axios.post(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent',
+          { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
+          { headers: geminiHeaders, timeout: 90000 }
+        );
+        responseText = res.data.candidates[0].content.parts[0].text;
+        console.log('SUCCESS: Gemini 3.6 Flash');
+      } catch (err: any) {
+        // Fallback: Gemini 3.1 Pro Preview
+        console.log(`Primary failed (${err.response?.status || err.code}). Falling back to Gemini 3.1 Pro...`);
+        const res = await axios.post(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent',
+          { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
+          { headers: geminiHeaders, timeout: 90000 }
+        );
+        responseText = res.data.candidates[0].content.parts[0].text;
+        console.log('SUCCESS: Gemini 3.1 Pro (fallback)');
+      }
     }
 
     const match = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
