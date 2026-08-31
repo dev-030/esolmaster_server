@@ -7,3 +7,24 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model PdfImportJob {
+  id        String          @id @default(nanoid())
+  status    ImportJobStatus @default(PENDING)
+  fileName  String
+  fileData  Bytes
+  result    String?         // JSON string of extracted sections + questions
+  error     String?
+  attempts  Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([status])
+}
