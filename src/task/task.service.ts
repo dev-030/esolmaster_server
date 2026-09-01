@@ -879,31 +879,36 @@ const where =
     const prompt = `You are a highly accurate UK ESOL exam digitization assistant.
 Your goal is to extract the logical structure of this paper, preserving meaning, digitizing all questions and answers, and identifying the exact visual boundaries of all reading context materials.
 
-## 1. DOCUMENT IDENTIFICATION
+## 1. CRITICAL: TOKEN REDUCTION & OUTPUT FORMAT
+- MINIFY JSON: Return a single dense string with NO newlines, NO spaces outside of string values, and NO indentation.
+- PRUNE EMPTY FIELDS: Do NOT output empty arrays (\`[]\`), nulls, or unnecessary keys. If a question is not an MCQ, completely OMIT \`options\` and \`correctIndex\` from \`config\`.
+- EVIDENCE: Keep 'evidence' ultra-short (max 2-5 words).
+
+## 2. DOCUMENT IDENTIFICATION
 Determine the documentType: "CANDIDATE_PAPER", "TUTOR_COPY", "ASSESSOR_PACK", "SAMPLE_PAPER", "PRACTICE_PAPER", or "UNKNOWN".
 If one PDF contains candidate content mixed with assessor notes, distinguish them.
 
-## 2. SECTION & QUESTION EXTRACTION
+## 3. SECTION & QUESTION EXTRACTION
 - Extract every Task/Section title (e.g. "Task 1") and its overall instruction.
 - Extract every question. Preserve original numbering and order.
 - Do NOT extract repeated headers, footers, page numbers, marking grids, or candidate detail boxes.
 - NEVER invent sections or question numbers.
 
-## 3. PAPER-TO-DIGITAL TRANSFORMATION (CRITICAL)
+## 4. PAPER-TO-DIGITAL TRANSFORMATION (CRITICAL)
 Convert physical interactions into digital-friendly questions while preserving the exact meaning.
 - Physical: "Underline the postcode." -> Digital: "What is the postcode? Write it below."
 - Physical: "Tick two boxes." -> Digital: "Which two options are correct?" (If options are present, use MCQ).
 Do NOT invent fake MCQ options if none exist. Use QUESTION_ANSWER instead.
 NEVER make automatic "repairs" that change the exam meaning.
 
-## 4. ANSWER EXTRACTION & VERIFICATION
+## 5. ANSWER EXTRACTION & VERIFICATION
 For every question, determine the 'answerState':
 - PRINTED: Use ONLY when there is strong evidence it is the official printed answer key (e.g. Assessor Pack). Do NOT confuse this with assessor notes, example answers, sample responses, or candidate examples.
 - AI_SOLVED: If no official answer is printed, read the source text and solve it. ONLY use evidence found in the document.
 - UNKNOWN: If there is not enough evidence to solve it, or if it is ambiguous. NEVER GUESS.
 Note: Set 'confidence' (HIGH/MEDIUM/LOW). Set 'evidence' to an ultra-concise citation (max 2-5 words, e.g. "Header date", "Line 4 text").
 
-## 5. CONTEXT DETECTION & BOUNDARY RULES (CRITICAL)
+## 6. CONTEXT DETECTION & BOUNDARY RULES (CRITICAL)
 For every reading passage / context item (cards, letters, postcards, advertisements, notices, articles):
 - "page": Exact 1-indexed page number where the material appears.
 - "box_2d": [ymin, xmin, ymax, xmax] as normalized integers from 0 to 1000 (0 = top/left edge, 1000 = bottom/right edge).
@@ -927,7 +932,7 @@ For every reading passage / context item (cards, letters, postcards, advertiseme
    - Generic exam header instructions placed above the reading container (e.g., "Task 1 (Guide time 15 minutes)", "Read the text and answer the questions") are NOT part of the context.
    - ymin must start immediately above the container's top border / top address, strictly below exam instructions.
 
-## 6. OUTPUT SCHEMA
+## 7. OUTPUT SCHEMA
 Return ONLY valid JSON matching this exact structure:
 {
   "documentType": "CANDIDATE_PAPER",
@@ -1006,10 +1011,7 @@ Return ONLY valid JSON matching this exact structure:
       "marks": 0,
       "answerState": "PRINTED",
       "confidence": "HIGH",
-      "evidence": "Exam sub-instruction",
-      "config": {
-        "answer": null
-      }
+      "evidence": "Exam sub-instruction"
     }
   ]
 }`;
