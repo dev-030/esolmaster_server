@@ -891,7 +891,7 @@ If one PDF contains candidate content mixed with assessor notes, distinguish the
 ## 3. SECTION & QUESTION EXTRACTION
 - Extract every Task/Section title (e.g. "Task 1") and its overall instruction.
 - Extract every question. Do NOT include the question number in the extracted text (e.g. extract "What is..." instead of "1. What is...").
-- Do NOT include MCQ options (a, b, c, d) inside the `content` string. The options belong ONLY in `config.options`.
+- Do NOT include MCQ options (a, b, c, d) inside the 'content' string. The options belong ONLY in 'config.options'.
 - Do NOT extract repeated headers, footers, page numbers, marking grids, or candidate detail boxes.
 - NEVER invent sections or fake questions.
 
