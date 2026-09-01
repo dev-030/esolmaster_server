@@ -1042,9 +1042,9 @@ Return ONLY valid JSON matching this exact structure:
       let usage: any = null;
 
       try {
-        console.log(`[Gemini Pipeline] PDF Base64 Encoded in ${prepTime}s. Streaming request to Gemini 3.6 Flash...`);
+        console.log(`[Gemini Pipeline] PDF Base64 Encoded in ${prepTime}s. Sending request to Gemini 3.6 Flash...`);
         const res = await axios.post(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse',
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent',
           { 
             contents: [{ 
               role: 'user', 
@@ -1060,80 +1060,30 @@ Return ONLY valid JSON matching this exact structure:
             }], 
             generationConfig: { 
               response_mime_type: 'application/json',
-              max_output_tokens: 4096,
               temperature: 0.1
             } 
           },
           { 
             headers: geminiHeaders, 
-            timeout: 120000,
-            responseType: 'stream'
+            timeout: 120000 
           }
         );
 
-        await new Promise<void>((resolve, reject) => {
-          let sseBuffer = '';
-          res.data.on('data', (chunk: Buffer) => {
-            if (!firstChunkTime) {
-              firstChunkTime = performance.now();
-            }
-            sseBuffer += chunk.toString('utf-8');
-            const lines = sseBuffer.split('\n');
-            sseBuffer = lines.pop() || '';
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const jsonStr = line.slice(6).trim();
-                if (jsonStr) {
-                  try {
-                    const parsedSSE = JSON.parse(jsonStr);
-                    const part = parsedSSE.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (part) completeText += part;
-                    if (parsedSSE.usageMetadata) usage = parsedSSE.usageMetadata;
-                  } catch (e) {
-                    // Partial JSON in SSE chunk, ignore
-                  }
-                }
-              }
-            }
-          });
-
-          res.data.on('end', () => {
-            if (sseBuffer.startsWith('data: ')) {
-              try {
-                const parsedSSE = JSON.parse(sseBuffer.slice(6).trim());
-                const part = parsedSSE.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (part) completeText += part;
-                if (parsedSSE.usageMetadata) usage = parsedSSE.usageMetadata;
-              } catch (e) {}
-            }
-            resolve();
-          });
-
-          res.data.on('error', (err: any) => reject(err));
-        });
-
         const totalEnd = performance.now();
-        const ttft = firstChunkTime ? ((firstChunkTime - requestStart) / 1000).toFixed(2) : 'N/A';
-        const genTime = firstChunkTime ? ((totalEnd - firstChunkTime) / 1000).toFixed(2) : 'N/A';
         const totalApi = ((totalEnd - requestStart) / 1000).toFixed(2);
+        const usage = res.data.usageMetadata;
+        responseText = res.data.candidates[0].content.parts[0].text;
 
-        responseText = completeText;
-
-        console.log(`\n================= GEMINI STREAMING BENCHMARK =================`);
-        console.log(`⚡ PDF Prep / Base64:        ${prepTime}s`);
-        console.log(`⏱️  Time to First Token (TTFT): ${ttft}s (Visual Ingest & Processing)`);
-        console.log(`🚀 Token Generation Time:    ${genTime}s`);
-        console.log(`🏁 Total API Response Time:  ${totalApi}s`);
-        console.log(`📥 Input Tokens (PDF):        ${usage?.promptTokenCount?.toLocaleString() ?? 'N/A'}`);
-        console.log(`📤 Output Tokens (JSON):      ${usage?.candidatesTokenCount?.toLocaleString() ?? 'N/A'}`);
-        console.log(`📊 Total Tokens:              ${usage?.totalTokenCount?.toLocaleString() ?? 'N/A'}`);
-        console.log(`==============================================================\n`);
+        console.log(`\n================= GEMINI API BENCHMARK =================`);
+        console.log(`⚡ PDF Prep / Base64:       ${prepTime}s`);
+        console.log(`⏱️  Total API Latency:       ${totalApi}s`);
+        console.log(`📥 Input Tokens (PDF):      ${usage?.promptTokenCount?.toLocaleString() ?? 'N/A'}`);
+        console.log(`📤 Output Tokens (JSON):    ${usage?.candidatesTokenCount?.toLocaleString() ?? 'N/A'}`);
+        console.log(`📊 Total Tokens:            ${usage?.totalTokenCount?.toLocaleString() ?? 'N/A'}`);
+        console.log(`========================================================\n`);
 
         metadata = {
           prepTime: `${prepTime}s`,
-          ttft: `${ttft}s`,
-          generationTime: `${genTime}s`,
           latency: `${totalApi}s`,
           inputTokens: usage?.promptTokenCount ?? 0,
           outputTokens: usage?.candidatesTokenCount ?? 0,
