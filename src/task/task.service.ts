@@ -1014,10 +1014,10 @@ Return ONLY valid JSON matching this structure:
               ] 
             }], 
             generationConfig: { 
-              response_mime_type: 'application/json',
+              responseMimeType: 'application/json',
               temperature: 0.1,
-              thinking_config: {
-                thinking_budget: 0,
+              thinkingConfig: {
+                thinkingBudget: 0,
               },
             } 
           },
