@@ -7,7 +7,7 @@ export class OpenAIService {
 
   constructor() {
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: process.env.OPENAI_API_KEY || 'disabled-key-no-env-var',
     });
   }
 
