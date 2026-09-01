@@ -997,71 +997,104 @@ Return ONLY valid JSON matching this structure:
       let completeText = '';
       let usage: any = null;
 
-      try {
-        console.log(`[Gemini Pipeline] PDF Base64 Encoded in ${prepTime}s. Sending request to Gemini 3.6 Flash...`);
-        const res = await axios.post(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent',
-          { 
-            contents: [{ 
-              role: 'user', 
-              parts: [
-                { 
-                  inline_data: {
-                    mime_type: 'application/pdf',
-                    data: pdfBase64
-                  }
-                },
-                { text: prompt }
-              ] 
-            }], 
-            generationConfig: { 
-              responseMimeType: 'application/json',
-              temperature: 0.1,
-              thinkingConfig: {
-                thinkingLevel: 'MINIMAL',
-              },
-            } 
-          },
-          { 
-            headers: geminiHeaders, 
-            timeout: 120000 
-          }
-        );
+      const CANDIDATE_MODELS = [
+        'gemini-3.6-flash',
+        'gemini-3.5-flash',
+        'gemini-2.5-flash',
+      ];
 
-        const totalEnd = performance.now();
-        const totalApi = ((totalEnd - requestStart) / 1000).toFixed(2);
-        const usage = res.data.usageMetadata;
-        responseText = res.data.candidates[0].content.parts[0].text;
+      let res: any = null;
+      let usedModel = '';
+      let lastError: any = null;
 
-        console.log(`\n================= GEMINI API BENCHMARK =================`);
-        console.log(`⚡ PDF Prep / Base64:       ${prepTime}s`);
-        console.log(`⏱️  Total API Latency:       ${totalApi}s`);
-        console.log(`📥 Input Tokens (PDF):      ${usage?.promptTokenCount?.toLocaleString() ?? 'N/A'}`);
-        console.log(`📤 Output Tokens (JSON):    ${usage?.candidatesTokenCount?.toLocaleString() ?? 'N/A'}`);
-        console.log(`📊 Total Tokens:            ${usage?.totalTokenCount?.toLocaleString() ?? 'N/A'}`);
-        console.log(`========================================================\n`);
-
-        metadata = {
-          prepTime: `${prepTime}s`,
-          latency: `${totalApi}s`,
-          inputTokens: usage?.promptTokenCount ?? 0,
-          outputTokens: usage?.candidatesTokenCount ?? 0,
-          totalTokens: usage?.totalTokenCount ?? 0
-        };
-      } catch (err: any) {
-        console.error('Gemini 3.6 Flash failed:', err.response?.data || err.message);
-        throw new Error(`Gemini 3.6 Flash error: ${err.response?.data?.error?.message || err.message}`);
+      for (const model of CANDIDATE_MODELS) {
+        try {
+          console.log(`[Gemini Pipeline] PDF Base64 Encoded in ${prepTime}s. Attempting model ${model}...`);
+          res = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+            { 
+              contents: [{ 
+                role: 'user', 
+                parts: [
+                  { 
+                    inline_data: {
+                      mime_type: 'application/pdf',
+                      data: pdfBase64
+                    }
+                  },
+                  { text: prompt }
+                ] 
+              }], 
+              generationConfig: { 
+                responseMimeType: 'application/json',
+                temperature: 0.1,
+              } 
+            },
+            { 
+              headers: geminiHeaders, 
+              timeout: 120000 
+            }
+          );
+          usedModel = model;
+          break;
+        } catch (err: any) {
+          lastError = err;
+          const status = err.response?.status;
+          const errMsg = err.response?.data?.error?.message || err.message;
+          console.warn(`[Gemini] Model ${model} failed (${status || 'Network Error'}: ${errMsg}). Failing over to next model immediately...`);
+        }
       }
+
+      if (!res) {
+        throw new Error(`All Gemini models failed: ${lastError?.response?.data?.error?.message || lastError?.message}`);
+      }
+
+      const totalEnd = performance.now();
+      const totalApi = ((totalEnd - requestStart) / 1000).toFixed(2);
+      usage = res.data.usageMetadata;
+      const parts = res.data.candidates[0].content.parts || [];
+      responseText = parts.map((p: any) => p.text || '').join('\n').trim();
+
+      console.log(`\n================= GEMINI API BENCHMARK =================`);
+      console.log(`🤖 Active Model:           ${usedModel}`);
+      console.log(`⚡ PDF Prep / Base64:       ${prepTime}s`);
+      console.log(`⏱️  Total API Latency:       ${totalApi}s`);
+      console.log(`📥 Input Tokens (PDF):      ${usage?.promptTokenCount?.toLocaleString() ?? 'N/A'}`);
+      console.log(`📤 Output Tokens (JSON):    ${usage?.candidatesTokenCount?.toLocaleString() ?? 'N/A'}`);
+      console.log(`📊 Total Tokens:            ${usage?.totalTokenCount?.toLocaleString() ?? 'N/A'}`);
+      console.log(`========================================================\n`);
+
+      metadata = {
+        prepTime: `${prepTime}s`,
+        latency: `${totalApi}s`,
+        inputTokens: usage?.promptTokenCount ?? 0,
+        outputTokens: usage?.candidatesTokenCount ?? 0,
+        totalTokens: usage?.totalTokenCount ?? 0
+      };
     }
 
-    const match = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (match) responseText = match[1];
+    
+    let match = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (match) {
+      responseText = match[1];
+    } else {
+      // Fallback: extract from first '{' to avoid conversational text turning into array elements
+      const openBrace = responseText.indexOf('{');
+      if (openBrace !== -1) {
+        responseText = responseText.substring(openBrace);
+      }
+    }
 
     let parsed;
     try {
       const { jsonrepair } = require('jsonrepair');
       const repaired = jsonrepair(responseText.trim());
       parsed = JSON.parse(repaired);
+      
+      // If jsonrepair wrapped conversational text and JSON into an array, find the valid object
+      if (Array.isArray(parsed)) {
+        parsed = parsed.find(item => typeof item === 'object' && item !== null && (item.sections || item.questions)) || parsed;
+      }
     } catch (err: any) {
       console.error("JSON Parsing failed!");
       const match = err.message.match(/position (\d+)/);
