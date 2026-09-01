@@ -1041,71 +1041,8 @@ Return ONLY valid JSON matching this exact structure:
       let completeText = '';
       let usage: any = null;
 
-        const geminiSchema = {
-          type: "OBJECT",
-          properties: {
-            documentType: {
-              type: "STRING",
-              enum: ["CANDIDATE_PAPER", "TUTOR_COPY", "ASSESSOR_PACK", "SAMPLE_PAPER", "PRACTICE_PAPER", "UNKNOWN"]
-            },
-            sections: {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  sectionIndex: { type: "INTEGER" },
-                  title: { type: "STRING" },
-                  instruction: { type: "STRING" },
-                  contextRegions: {
-                    type: "ARRAY",
-                    items: {
-                      type: "OBJECT",
-                      properties: {
-                        page: { type: "INTEGER" },
-                        box_2d: {
-                          type: "ARRAY",
-                          items: { type: "INTEGER" }
-                        },
-                        purpose: { type: "STRING" },
-                        confidence: { type: "STRING", enum: ["HIGH", "MEDIUM", "LOW"] }
-                      },
-                      required: ["page", "box_2d", "purpose", "confidence"]
-                    }
-                  }
-                },
-                required: ["sectionIndex", "title", "instruction", "contextRegions"]
-              }
-            },
-            questions: {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  sectionIndex: { type: "INTEGER" },
-                  type: { type: "STRING", enum: ["MCQ", "TRUE_FALSE", "GAP_FILL", "QUESTION_ANSWER", "INSTRUCTION"] },
-                  content: { type: "STRING" },
-                  marks: { type: "INTEGER" },
-                  answerState: { type: "STRING", enum: ["PRINTED", "AI_SOLVED", "TEACHER_PROVIDED", "VERIFIED", "CONFLICT", "UNKNOWN"] },
-                  confidence: { type: "STRING", enum: ["HIGH", "MEDIUM", "LOW"] },
-                  evidence: { type: "STRING" },
-                  config: {
-                    type: "OBJECT",
-                    properties: {
-                      options: { type: "ARRAY", items: { type: "STRING" } },
-                      correctIndex: { type: "INTEGER" },
-                      answer: { type: "STRING" }
-                    }
-                  }
-                },
-                required: ["sectionIndex", "type", "content", "marks", "answerState", "confidence", "evidence", "config"]
-              }
-            }
-          },
-          required: ["documentType", "sections", "questions"]
-        };
-
       try {
-        console.log(`[Gemini Pipeline] PDF Base64 Encoded in ${prepTime}s. Streaming request to Gemini 3.6 Flash with Structured Outputs...`);
+        console.log(`[Gemini Pipeline] PDF Base64 Encoded in ${prepTime}s. Streaming request to Gemini 3.6 Flash...`);
         const res = await axios.post(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse',
           { 
@@ -1123,7 +1060,8 @@ Return ONLY valid JSON matching this exact structure:
             }], 
             generationConfig: { 
               response_mime_type: 'application/json',
-              response_schema: geminiSchema
+              max_output_tokens: 4096,
+              temperature: 0.1
             } 
           },
           { 
