@@ -5,12 +5,10 @@ require('dotenv').config({ path: '.env' });
 
 async function test() {
   try {
-    const buffer = fs.readFileSync('../khalaf79-attachments/E1 ESOL Reading Candidate Paper PPA.pdf'); // Using E1 ESOL paper because it has True/False
+    const buffer = fs.readFileSync('../ESOL_Entry1_Reading_PracticePaper_SetA_TUTOR.pdf');
     const ast = await parseOffice(buffer, { fileType: 'pdf' });
     const rawText = ast.toText();
 
-    
-    // Read the prompt directly from the file to ensure it matches
     const code = fs.readFileSync('./src/task/task.service.ts', 'utf8');
     const promptRegex = /const prompt = `([\s\S]*?)`;/;
     let promptTemplate = code.match(promptRegex)[1];

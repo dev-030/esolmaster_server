@@ -874,14 +874,14 @@ const where =
         const { parseOffice } = require('officeparser');
         const ast = await parseOffice(file.buffer, { fileType: extension as any });
       }
-    }
-
-    const prompt = `You are a highly accurate UK ESOL exam digitization assistant.
+    }    const prompt = `You are a highly accurate UK ESOL exam digitization assistant.
 Your goal is to extract the logical structure of this paper, preserving meaning, digitizing all questions and answers, and identifying the exact visual boundaries of all reading context materials.
 
 ## 1. CRITICAL: TOKEN REDUCTION & OUTPUT FORMAT
 - MINIFY JSON: Return a single dense string with NO newlines, NO spaces outside of string values, and NO indentation.
-- PRUNE EMPTY FIELDS: Do NOT output empty arrays (\`[]\`), nulls, or unnecessary keys. If a question is not an MCQ, completely OMIT \`options\` and \`correctIndex\` from \`config\`.
+- PRUNE EMPTY FIELDS: Do NOT output empty arrays (\`[]\`), nulls, or unnecessary keys.
+- MCQ DEDUPLICATION: For MCQs, output ONLY \`options\` and \`correctIndex\` inside \`config\`. Do NOT include a redundant \`answer\` string.
+- NON-MCQs: For \`GAP_FILL\` or \`QUESTION_ANSWER\`, emit only \`"config": { "answer": "..." }\`.
 - EVIDENCE: Keep 'evidence' ultra-short (max 2-5 words).
 
 ## 2. DOCUMENT IDENTIFICATION
@@ -895,45 +895,33 @@ If one PDF contains candidate content mixed with assessor notes, distinguish the
 - NEVER invent sections or question numbers.
 
 ## 4. PAPER-TO-DIGITAL TRANSFORMATION (CRITICAL)
-Convert physical interactions into digital-friendly questions while preserving the exact meaning.
+Convert physical interactions into digital-friendly questions while preserving the exact meaning:
 - Physical: "Underline the postcode." -> Digital: "What is the postcode? Write it below."
-- Physical: "Tick two boxes." -> Digital: "Which two options are correct?" (If options are present, use MCQ).
+- Physical: "Tick two boxes." -> Digital: "Which two options are correct?" (Use MCQ if choices exist).
 Do NOT invent fake MCQ options if none exist. Use QUESTION_ANSWER instead.
-NEVER make automatic "repairs" that change the exam meaning.
 
 ## 5. ANSWER EXTRACTION & VERIFICATION
-For every question, determine the 'answerState':
-- PRINTED: Use ONLY when there is strong evidence it is the official printed answer key (e.g. Assessor Pack). Do NOT confuse this with assessor notes, example answers, sample responses, or candidate examples.
-- AI_SOLVED: If no official answer is printed, read the source text and solve it. ONLY use evidence found in the document.
-- UNKNOWN: If there is not enough evidence to solve it, or if it is ambiguous. NEVER GUESS.
-Note: Set 'confidence' (HIGH/MEDIUM/LOW). Set 'evidence' to an ultra-concise citation (max 2-5 words, e.g. "Header date", "Line 4 text").
+For every question, determine 'answerState':
+- PRINTED: Use ONLY when there is strong evidence it is the official printed answer key.
+- AI_SOLVED: If no official answer is printed, read the source text and solve it using ONLY document evidence.
+- UNKNOWN: If there is not enough evidence to solve it. NEVER GUESS.
+Set 'evidence' to an ultra-concise citation (max 2-5 words, e.g. "Header date", "Line 4 text").
 
 ## 6. CONTEXT DETECTION & BOUNDARY RULES (CRITICAL)
 For every reading passage / context item (cards, letters, postcards, advertisements, notices, articles):
-- "page": Exact 1-indexed page number where the material appears.
+- "page": Exact 1-indexed page number.
 - "box_2d": [ymin, xmin, ymax, xmax] as normalized integers from 0 to 1000 (0 = top/left edge, 1000 = bottom/right edge).
 - "purpose": Brief description (e.g. "Task 1 Postcard").
 - "confidence": "HIGH", "MEDIUM", or "LOW".
 
-### BOUNDARY CALCULATION RULES:
-1. OUTERMOST VISUAL FRAME FIRST:
-   - If the material has an outer border, frame, card shape, or decorative boundary (e.g., striped airmail postcard borders, solid black boxes), your coordinates MUST encompass the ENTIRE outer border.
-   - The coordinates [ymin, xmin, ymax, xmax] must sit completely OUTSIDE the border lines, leaving a comfortable 10–20 unit breathing margin.
-
-2. LETTERS & FORMAL DOCUMENTS:
-   - For formal letters, the passage ALWAYS starts at the very top sender address header / hospital name / organization title (NOT at "Dear ...").
-   - It ALWAYS extends to the bottommost signature line, printed name, and footer.
-
-3. POSTCARDS & GRAPHICAL ADS:
-   - Must include all stamps, postmarks, recipient address blocks on the right, and outer decorative framing.
-   - For flyers/ads, include all logos, icons (e.g., parking / accessibility symbols), website URLs, and bottom contact numbers.
-
-4. EXAM INSTRUCTIONS EXCLUSION:
-   - Generic exam header instructions placed above the reading container (e.g., "Task 1 (Guide time 15 minutes)", "Read the text and answer the questions") are NOT part of the context.
-   - ymin must start immediately above the container's top border / top address, strictly below exam instructions.
+BOUNDARY CALCULATION RULES:
+1. OUTERMOST VISUAL FRAME FIRST: If an outer border, frame, card shape, or decorative boundary exists (e.g., striped airmail postcard borders, black stroke boxes), encompass the ENTIRE outer border. Coordinates must sit completely OUTSIDE the border lines with a 10–20 unit breathing margin.
+2. LETTERS & FORMAL DOCUMENTS: Passage ALWAYS starts at the topmost sender address / hospital header (NOT at "Dear ...") and extends through the bottom signature/printed name.
+3. POSTCARDS & ADS: Include all stamps, postmarks, recipient addresses, logos, accessibility/parking icons, URLs, and phone numbers.
+4. EXAM INSTRUCTIONS EXCLUSION: Generic instructions above the container (e.g., "Task 1 (Guide time...)", "Read the text...") are NOT part of the context. ymin starts immediately above the container's top border.
 
 ## 7. OUTPUT SCHEMA
-Return ONLY valid JSON matching this exact structure:
+Return ONLY valid JSON matching this structure:
 {
   "documentType": "CANDIDATE_PAPER",
   "sections": [
@@ -944,7 +932,7 @@ Return ONLY valid JSON matching this exact structure:
       "contextRegions": [
         {
           "page": 2,
-          "box_2d": [157, 85, 476, 915],
+          "box_2d": ["ymin_int", "xmin_int", "ymax_int", "xmax_int"],
           "purpose": "Task 1 Postcard",
           "confidence": "HIGH"
         }
@@ -959,25 +947,10 @@ Return ONLY valid JSON matching this exact structure:
       "marks": 1,
       "answerState": "AI_SOLVED",
       "confidence": "HIGH",
-      "evidence": "Top header: '12th October'",
+      "evidence": "Header date",
       "config": {
         "options": ["10th October", "12th October", "14th October"],
-        "correctIndex": 1,
-        "answer": "12th October"
-      }
-    },
-    {
-      "sectionIndex": 1,
-      "type": "TRUE_FALSE",
-      "content": "The surgery is open on Sundays.",
-      "marks": 1,
-      "answerState": "AI_SOLVED",
-      "confidence": "HIGH",
-      "evidence": "Hours: 'Mon-Sat only'",
-      "config": {
-        "options": ["True", "False"],
-        "correctIndex": 1,
-        "answer": "False"
+        "correctIndex": 1
       }
     },
     {
@@ -987,33 +960,13 @@ Return ONLY valid JSON matching this exact structure:
       "marks": 1,
       "answerState": "AI_SOLVED",
       "confidence": "HIGH",
-      "evidence": "Notice: Dr. James on Tuesdays",
+      "evidence": "Notice line 2",
       "config": {
         "answer": "Tuesday"
       }
-    },
-    {
-      "sectionIndex": 1,
-      "type": "QUESTION_ANSWER",
-      "content": "What is the surgery phone number?",
-      "marks": 1,
-      "answerState": "AI_SOLVED",
-      "confidence": "HIGH",
-      "evidence": "Bottom contact info",
-      "config": {
-        "answer": "0161 496 0123"
-      }
-    },
-    {
-      "sectionIndex": 1,
-      "type": "INSTRUCTION",
-      "content": "Questions 1 to 5 are based on Text A.",
-      "marks": 0,
-      "answerState": "PRINTED",
-      "confidence": "HIGH",
-      "evidence": "Exam sub-instruction"
     }
   ]
+}\`;
 }`;
 
     let responseText = '';
@@ -1062,7 +1015,10 @@ Return ONLY valid JSON matching this exact structure:
             }], 
             generationConfig: { 
               response_mime_type: 'application/json',
-              temperature: 0.1
+              temperature: 0.1,
+              thinking_config: {
+                thinking_budget: 0,
+              },
             } 
           },
           { 

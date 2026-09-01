@@ -1,0 +1,21 @@
+[
+  {
+    "paper": "E1 ESOL Reading Candidate Paper PPA.pdf",
+    "documentType": "PRACTICE_PAPER",
+    "taskCount": 3,
+    "questionCount": 24,
+    "contextRegionCount": 3,
+    "answerStates": {
+      "printed": 0,
+      "aiSolved": 24,
+      "unknown": 0
+    },
+    "validationReport": {
+      "errors": [],
+      "warnings": []
+    },
+    "metadata": {},
+    "processingTime": 26.028,
+    "status": "SUCCESS"
+  }
+]
