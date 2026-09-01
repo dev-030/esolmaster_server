@@ -1035,8 +1035,9 @@ Return ONLY valid JSON matching this exact structure:
         'Content-Type': 'application/json',
       };
 
+      const requestStart = performance.now();
       try {
-        console.log('Sending PDF to Gemini 3.6 Flash...');
+        console.log('Sending PDF directly to Gemini 3.6 Flash (Visual Mode)...');
         const res = await axios.post(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent',
           { 
@@ -1056,8 +1057,24 @@ Return ONLY valid JSON matching this exact structure:
           },
           { headers: geminiHeaders, timeout: 120000 }
         );
+
+        const latency = ((performance.now() - requestStart) / 1000).toFixed(2);
+        const usage = res.data.usageMetadata;
         responseText = res.data.candidates[0].content.parts[0].text;
-        console.log('SUCCESS: Gemini 3.6 Flash extraction complete.');
+
+        console.log(`\n================= GEMINI API BENCHMARK =================`);
+        console.log(`⏱️  API Latency:          ${latency}s`);
+        console.log(`📥 Input Tokens (PDF):   ${usage?.promptTokenCount?.toLocaleString() ?? 'N/A'}`);
+        console.log(`📤 Output Tokens (JSON): ${usage?.candidatesTokenCount?.toLocaleString() ?? 'N/A'}`);
+        console.log(`📊 Total Tokens:         ${usage?.totalTokenCount?.toLocaleString() ?? 'N/A'}`);
+        console.log(`========================================================\n`);
+
+        metadata = {
+          latency: `${latency}s`,
+          inputTokens: usage?.promptTokenCount ?? 0,
+          outputTokens: usage?.candidatesTokenCount ?? 0,
+          totalTokens: usage?.totalTokenCount ?? 0
+        };
       } catch (err: any) {
         console.error('Gemini 3.6 Flash failed:', err.response?.data || err.message);
         throw new Error(`Gemini 3.6 Flash error: ${err.response?.data?.error?.message || err.message}`);
@@ -1066,10 +1083,6 @@ Return ONLY valid JSON matching this exact structure:
 
     const match = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (match) responseText = match[1];
-    
-    console.log('\n=================== AI RAW RESPONSE ===================');
-    console.log(responseText);
-    console.log('========================================================\n');
 
     const parsed = JSON.parse(responseText.trim());
 
