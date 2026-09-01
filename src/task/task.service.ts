@@ -1017,7 +1017,7 @@ Return ONLY valid JSON matching this structure:
               responseMimeType: 'application/json',
               temperature: 0.1,
               thinkingConfig: {
-                thinkingBudget: 0,
+                thinkingLevel: 'MINIMAL',
               },
             } 
           },
