@@ -1170,14 +1170,6 @@ Return ONLY valid JSON matching this exact structure:
             r.derivedWidth = width;
             r.derivedHeight = height;
 
-            console.log(`\n======================================================`);
-            console.log(`📐 [CONTEXT CROP COORDINATES] Section: "${section.title || ('Task ' + section.sectionIndex)}" (Page ${r.page})`);
-            console.log(`   • Edges:      { left: ${left}, top: ${top}, right: ${right}, bottom: ${bottom} }`);
-            console.log(`   • Dimensions: { width: ${width}, height: ${height} }`);
-            console.log(`   • Scale 1000: [ymin: ${Math.round(top * 1000)}, xmin: ${Math.round(left * 1000)}, ymax: ${Math.round(bottom * 1000)}, xmax: ${Math.round(right * 1000)}]`);
-            console.log(`   • Purpose:    "${r.purpose || 'N/A'}" (Confidence: ${r.confidence || 'HIGH'})`);
-            console.log(`======================================================`);
-
             if (left < 0 || top < 0 || right > 1 || bottom > 1 || left >= right || top >= bottom) {
               section.validation.errors.push("Crop coordinates out of bounds or invalid.");
               globalErrors.push("Crop coordinates out of bounds.");
@@ -1214,20 +1206,6 @@ Return ONLY valid JSON matching this exact structure:
         sectionId: secId
       };
     });
-
-    console.log(`\n📋 --- IMPORT PDF SUMMARY ---`);
-    console.log(`   Document Type: ${parsed.documentType || 'UNKNOWN'}`);
-    console.log(`   Sections Extracted: ${sectionsWithIds.length}`);
-    console.log(`   Questions Extracted: ${questionsWithIds.length}`);
-    sectionsWithIds.forEach((s: any, idx: number) => {
-      if (s.contextRegions && s.contextRegions.length > 0) {
-        const cr = s.contextRegions[0];
-        console.log(`   [Section ${idx + 1}: ${s.title}] Crop => Page: ${cr.page}, left: ${cr.left}, top: ${cr.top}, right: ${cr.right}, bottom: ${cr.bottom}, w: ${cr.width}, h: ${cr.height}`);
-      } else {
-        console.log(`   [Section ${idx + 1}: ${s.title}] No visual context region.`);
-      }
-    });
-    console.log(`--------------------------------\n`);
 
     return {
       documentType: parsed.documentType || 'UNKNOWN',
