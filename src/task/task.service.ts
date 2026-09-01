@@ -1100,8 +1100,21 @@ Return ONLY valid JSON matching this exact structure:
     const match = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (match) responseText = match[1];
 
-    const parsed = JSON.parse(responseText.trim());
-
+    let parsed;
+    try {
+      const { jsonrepair } = require('jsonrepair');
+      const repaired = jsonrepair(responseText.trim());
+      parsed = JSON.parse(repaired);
+    } catch (err: any) {
+      console.error("JSON Parsing failed!");
+      const match = err.message.match(/position (\d+)/);
+      if (match) {
+        const pos = parseInt(match[1], 10);
+        const snippet = responseText.substring(Math.max(0, pos - 50), Math.min(responseText.length, pos + 50));
+        console.error(`Error around position ${pos}: ...${snippet}...`);
+      }
+      throw err;
+    }
     // Backend Validation with Severity
     const validSectionsCount = parsed.sections ? parsed.sections.length : 0;
     const globalErrors: string[] = [];
