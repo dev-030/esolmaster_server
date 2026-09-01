@@ -10,19 +10,19 @@ model User {
   updatedAt              DateTime               @updatedAt
   isActive               Boolean                @default(true)
   isOnboarded            Boolean                @default(false)
-  student                StudentProfile?
-  tasks                  Task[]
-  teacher                TeacherProfile?
-  taughtClasses          Class[]                @relation("TeacherClasses")
-  enrolledClasses        Class[]                @relation("StudentClasses") // If the user is a student
   attempts               Attempt[]
+  taughtClasses          Class[]                @relation("TeacherClasses")
+  notifications          Notification[]
+  passwordResetCodes     PasswordResetCode[]
   studentActivities      StudentActivity[]
   studentBadges          StudentBadge[]
   studentMonthlyStats    StudentMonthlyStats[]
+  student                StudentProfile?
   studentSkillProgresses StudentSkillProgress[]
+  tasks                  Task[]
+  teacher                TeacherProfile?
   userSubscription       UserSubscription?
-  passwordResetCodes     PasswordResetCode[]
-  notifications          Notification[]
+  enrolledClasses        Class[]                @relation("StudentClasses")
 }
 
 model TeacherProfile {
@@ -35,18 +35,15 @@ model TeacherProfile {
 }
 
 model StudentProfile {
-  id       String @id @default(nanoid())
-  userId   String @unique
-  username String @unique
-
-  totalXp Int @default(0)
-  level   Int @default(1)
-
+  id             String    @id @default(nanoid())
+  userId         String    @unique
+  username       String    @unique
+  totalXp        Int       @default(0)
+  level          Int       @default(1)
   currentStreak  Int       @default(0)
   longestStreak  Int       @default(0)
   lastActiveDate DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum Role {

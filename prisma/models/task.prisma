@@ -1,45 +1,37 @@
 model Task {
   id              String            @id @default(nanoid())
   title           String
-  xpPerQuestion   Int               @default(5) // NEW
+  xpPerQuestion   Int               @default(5)
   type            TaskType
   status          TaskStatus        @default(DRAFT)
   isPublic        Boolean           @default(false)
   isPremium       Boolean           @default(false)
-  timeLimit       Int?              // in minutes
-  feedbackMode    FeedbackMode      @default(IMMEDIATE)
   createdById     String
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+  feedbackMode    FeedbackMode      @default(IMMEDIATE)
+  folderId        String?
+  timeLimit       Int?
+  attempts        Attempt[]
+  classTasks      ClassTask[]
   grammarContent  GrammarTask?
+  premiumInPlans  PlanPremiumTask[]
   questions       Question[]
   readingContent  ReadingTask?
   createdBy       User              @relation(fields: [createdById], references: [id])
-  vocabularyItems WordItem[]
-  classTasks      ClassTask[]
-  attempts        Attempt[]
-  premiumInPlans  PlanPremiumTask[]
-  folderId        String?
   folder          Folder?           @relation(fields: [folderId], references: [id])
+  vocabularyItems WordItem[]
 }
 
 model Folder {
   id        String   @id @default(nanoid())
   name      String
   parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   parent    Folder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
   children  Folder[] @relation("FolderToFolder")
   tasks     Task[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum EntryType {
-  ENTRY1
-  ENTRY2
-  ENTRY3
-  LEVEL1
-  LEVEL2
 }
 
 model ReadingTask {
@@ -50,7 +42,7 @@ model ReadingTask {
   entryType    EntryType[]
   awardingBody AwardingBody?
   passLogic    PassLogicType @default(SCORE_ONLY)
-  passMark     Int? // The minimum score required (if applicable)
+  passMark     Int?
   task         Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
 }
 
@@ -78,19 +70,27 @@ model Question {
   order          Int             @default(0)
   config         Json
   createdAt      DateTime        @default(now())
+  criterionId    String?
+  criterion      Criterion?      @relation(fields: [criterionId], references: [id])
   task           Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
   studentAnswers StudentAnswer[]
-  criterion      Criterion?      @relation(fields: [criterionId], references: [id])
-  criterionId    String?
+}
+
+enum EntryType {
+  ENTRY1
+  ENTRY2
+  ENTRY3
+  LEVEL1
+  LEVEL2
 }
 
 enum TaskType {
   READING
+  GRAMMAR
+  VOCABULARY
   WRITING
   LISTENING
   SPEAKING
-  GRAMMAR
-  VOCABULARY
 }
 
 enum TaskStatus {

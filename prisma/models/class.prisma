@@ -1,46 +1,39 @@
 model Class {
-  id          String  @id @default(nanoid())
+  id          String      @id @default(nanoid())
   name        String
   subject     String
   description String?
   color       String
   maxStudents Int
-
-  teacherId String
-  teacher   User   @relation("TeacherClasses", fields: [teacherId], references: [id])
-
-  students User[] @relation("StudentClasses")
-
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  classTasks ClassTask[]
+  teacherId   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  teacher     User        @relation("TeacherClasses", fields: [teacherId], references: [id])
+  classTasks  ClassTask[]
+  students    User[]      @relation("StudentClasses")
 }
 
 model ClassTask {
-  id      String   @id @default(nanoid())
-  classId String
-  taskId  String
-  addedAt DateTime @default(now())
-
+  id            String              @id @default(nanoid())
+  classId       String
+  taskId        String
+  addedAt       DateTime            @default(now())
+  scheduledTask ClassScheduledTask?
   class         Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
   task          Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  scheduledTask ClassScheduledTask?
 
   @@unique([classId, taskId])
 }
 
 model ClassScheduledTask {
-  id          String    @id @default(nanoid())
-  scheduledAt DateTime  @default(now())
-  dueAt       DateTime?
-  isActive    Boolean   @default(true)
-
-  // Reminder dedupe — set once the corresponding notification batch has been sent.
+  id                   String            @id @default(nanoid())
+  scheduledAt          DateTime          @default(now())
+  dueAt                DateTime?
+  isActive             Boolean           @default(true)
   openedNotifiedAt     DateTime?
   endingSoonNotifiedAt DateTime?
-
-  classTaskId       String            @unique
-  classTask         ClassTask         @relation(fields: [classTaskId], references: [id], onDelete: Cascade)
-  attempts          Attempt[]
-  studentActivities StudentActivity[]
+  classTaskId          String            @unique
+  attempts             Attempt[]
+  classTask            ClassTask         @relation(fields: [classTaskId], references: [id], onDelete: Cascade)
+  studentActivities    StudentActivity[]
 }
