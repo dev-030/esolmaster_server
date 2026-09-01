@@ -890,9 +890,10 @@ If one PDF contains candidate content mixed with assessor notes, distinguish the
 
 ## 3. SECTION & QUESTION EXTRACTION
 - Extract every Task/Section title (e.g. "Task 1") and its overall instruction.
-- Extract every question. Preserve original numbering and order.
+- Extract every question. Do NOT include the question number in the extracted text (e.g. extract "What is..." instead of "1. What is...").
+- Do NOT include MCQ options (a, b, c, d) inside the `content` string. The options belong ONLY in `config.options`.
 - Do NOT extract repeated headers, footers, page numbers, marking grids, or candidate detail boxes.
-- NEVER invent sections or question numbers.
+- NEVER invent sections or fake questions.
 
 ## 4. PAPER-TO-DIGITAL TRANSFORMATION (CRITICAL)
 Convert physical interactions into digital-friendly questions while preserving the exact meaning:
@@ -932,7 +933,7 @@ Return ONLY valid JSON matching this structure:
       "contextRegions": [
         {
           "page": 2,
-          "box_2d": ["ymin_int", "xmin_int", "ymax_int", "xmax_int"],
+          "box_2d": [157, 85, 476, 915],
           "purpose": "Task 1 Postcard",
           "confidence": "HIGH"
         }
