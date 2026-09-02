@@ -33,6 +33,19 @@ export class OpenAIService {
       type: "object",
       properties: {
         documentType: { type: "string", enum: ["CANDIDATE_PAPER", "TUTOR_COPY", "ASSESSOR_PACK", "SAMPLE_PAPER", "PRACTICE_PAPER", "UNKNOWN"] },
+        passMark: { type: ["number", "null"], description: "Overall minimum mark to pass, if explicitly stated" },
+        paperCriteria: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              code: { type: "string", description: "e.g. 1.1 or 2.3" },
+              description: { type: "string", description: "e.g. Read correctly" }
+            },
+            required: ["code", "description"],
+            additionalProperties: false
+          }
+        },
         sections: {
           type: "array",
           items: {
@@ -71,6 +84,7 @@ export class OpenAIService {
                 type: "object",
                 properties: {
                   sectionIndex: { type: "number" },
+                  mappedCriterion: { type: ["string", "null"] },
                   type: { type: "string", enum: ["MCQ", "TRUE_FALSE", "GAP_FILL"] },
                   content: { type: "string" },
                   marks: { type: "number" },
@@ -95,6 +109,7 @@ export class OpenAIService {
                 type: "object",
                 properties: {
                   sectionIndex: { type: "number" },
+                  mappedCriterion: { type: ["string", "null"] },
                   type: { type: "string", enum: ["QUESTION_ANSWER", "INSTRUCTION"] },
                   content: { type: "string" },
                   marks: { type: "number" },

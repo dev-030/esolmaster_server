@@ -901,14 +901,20 @@ Convert physical interactions into digital-friendly questions while preserving t
 - Physical: "Tick two boxes." -> Digital: "Which two options are correct?" (Use MCQ if choices exist).
 Do NOT invent fake MCQ options if none exist. Use QUESTION_ANSWER instead.
 
-## 5. ANSWER EXTRACTION & VERIFICATION
+## 5. CRITERIA, MAPPING & PASS MARK
+- ESOL papers often include a marking grid, criteria checklist, or learning outcomes (e.g., "1.1 Read correctly", "2.1 Punctuation").
+- If found, extract these into 'paperCriteria' (code and description).
+- If a specific minimum mark to pass the paper is stated (e.g., "Pass mark is 18/24" or "Pass mark: 18"), extract the raw integer into 'passMark' (e.g. 18).
+- If a question explicitly maps to a criterion (often shown in a small box next to the question like "1.1" or "2.3"), extract this code into the question's 'mappedCriterion' field.
+
+## 6. ANSWER EXTRACTION & VERIFICATION
 For every question, determine 'answerState':
 - PRINTED: Use ONLY when there is strong evidence it is the official printed answer key.
 - AI_SOLVED: If no official answer is printed, read the source text and solve it using ONLY document evidence.
 - UNKNOWN: If there is not enough evidence to solve it. NEVER GUESS.
 Set 'evidence' to an ultra-concise citation (max 2-5 words, e.g. "Header date", "Line 4 text").
 
-## 6. CONTEXT DETECTION & BOUNDARY RULES (CRITICAL)
+## 7. CONTEXT DETECTION & BOUNDARY RULES (CRITICAL)
 For every reading passage / context item (cards, letters, postcards, advertisements, notices, articles):
 - "page": Exact 1-indexed page number.
 - "box_2d": [ymin, xmin, ymax, xmax] as normalized integers from 0 to 1000 (0 = top/left edge, 1000 = bottom/right edge).
@@ -921,10 +927,14 @@ BOUNDARY CALCULATION RULES:
 3. POSTCARDS & ADS: Include all stamps, postmarks, recipient addresses, logos, accessibility/parking icons, URLs, and phone numbers.
 4. EXAM INSTRUCTIONS EXCLUSION: Generic instructions above the container (e.g., "Task 1 (Guide time...)", "Read the text...") are NOT part of the context. ymin starts immediately above the container's top border.
 
-## 7. OUTPUT SCHEMA
+## 8. OUTPUT SCHEMA
 Return ONLY valid JSON matching this structure:
 {
   "documentType": "CANDIDATE_PAPER",
+  "passMark": 18,
+  "paperCriteria": [
+    { "code": "1.1", "description": "Read and understand short texts" }
+  ],
   "sections": [
     {
       "sectionIndex": 1,
@@ -943,6 +953,7 @@ Return ONLY valid JSON matching this structure:
   "questions": [
     {
       "sectionIndex": 1,
+      "mappedCriterion": "1.1",
       "type": "MCQ",
       "content": "What is the date of the event?",
       "marks": 1,
@@ -1228,6 +1239,8 @@ Return ONLY valid JSON matching this structure:
 
     return {
       documentType: parsed.documentType || 'UNKNOWN',
+      passMark: parsed.passMark || null,
+      paperCriteria: parsed.paperCriteria || [],
       sections: sectionsWithIds,
       questions: questionsWithIds,
       validationReport: parsed.validationReport,
