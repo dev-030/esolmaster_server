@@ -901,11 +901,11 @@ Convert physical interactions into digital-friendly questions while preserving t
 - Physical: "Tick two boxes." -> Digital: "Which two options are correct?" (Use MCQ if choices exist).
 Do NOT invent fake MCQ options if none exist. Use QUESTION_ANSWER instead.
 
-## 5. CRITERIA, MAPPING & PASS MARK
-- ESOL papers often include a marking grid, criteria checklist, or learning outcomes (e.g., "1.1 Read correctly", "2.1 Punctuation").
-- If found, extract these into 'paperCriteria' (code and description).
+## 5. CRITERIA, MAPPING & PASS MARK (MANDATORY EXTRACTION)
+- CRITICAL: You MUST thoroughly scan the entire document (especially the first/last pages) for a marking grid, criteria checklist, or learning outcomes (e.g., "1.1 Read correctly", "2.1 Punctuation").
+- Extract ALL found criteria into the 'paperCriteria' array (code and description). Do not skip this!
 - If a specific minimum mark to pass the paper is stated (e.g., "Pass mark is 18/24" or "Pass mark: 18"), extract the raw integer into 'passMark' (e.g. 18).
-- If a question explicitly maps to a criterion (often shown in a small box next to the question like "1.1" or "2.3"), extract this code into the question's 'mappedCriterion' field.
+- CRITICAL: ESOL papers often map questions to criteria using tiny margin notes, small boxes, or brackets next to the question (e.g. "[1.1]", "2.3"). You MUST actively look for these and extract this code into the question's 'mappedCriterion' field. Failure to map criteria will ruin the assessment logic.
 
 ## 6. ANSWER EXTRACTION & VERIFICATION
 For every question, determine 'answerState':
