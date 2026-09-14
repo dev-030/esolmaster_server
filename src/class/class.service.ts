@@ -13,10 +13,40 @@ import {
 } from './dto/create.dto';
 import { PaginationQueryDto } from 'common/dto/pagination.dto';
 import { AttemptStatus } from 'src/database/prisma-client/enums';
+import { randomInt } from 'crypto';
+import { ClassJoinStatus } from './dto/create.dto';
 
 @Injectable()
 export class ClassService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async generateJoinCode() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for (;;) {
+      const code = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join('');
+      if (!(await this.prisma.class.findUnique({ where: { joinCode: code }, select: { id: true } }))) {
+        return code;
+      }
+    }
+  }
+
+  private async assertClassAccess(classId: string, user: { sub: string; role: string }) {
+    if (user.role === 'admin') return;
+
+    const cls = await this.prisma.class.findUnique({
+      where: { id: classId },
+      select: { teacherId: true, students: { where: { id: user.sub }, select: { id: true } } },
+    });
+
+    if (
+      !cls ||
+      !['teacher', 'student'].includes(user.role) ||
+      (user.role === 'teacher' && cls.teacherId !== user.sub) ||
+      (user.role === 'student' && !cls.students.length)
+    ) {
+      throw new ForbiddenException('You do not have access to this class');
+    }
+  }
 
   // ─── Formatters ───────────────────────────────────────────────
 
@@ -34,6 +64,7 @@ export class ClassService {
     taskCount: cls._count?.classTasks ?? 0,
     classTasks: cls.classTasks?.map(this.formatClassTask) ?? [],
     createdAt: cls.createdAt,
+    joinStatus: cls.joinStatus,
   });
 
   formatClassTask = (ct: any) => ({
@@ -65,8 +96,6 @@ export class ClassService {
       include: { plan: true },
     });
 
-    console.log(subscription)
-
     if (!subscription || subscription.billingStatus !== 'ACTIVE') {
       throw new BadRequestException('No active subscription found');
     }
@@ -91,14 +120,22 @@ export class ClassService {
       );
     }
 
+    const maxStudents =
+      dto.maxStudents === null || dto.maxStudents === 0
+        ? null
+        : dto.maxStudents !== undefined && dto.maxStudents > 0
+          ? dto.maxStudents
+          : null;
+
     const cls = await this.prisma.class.create({
       data: {
         name: dto.name,
         subject: dto.subject,
         description: dto.description,
         color: dto.color,
-        maxStudents: subscription.plan.maxStudentsPerClass,
+        maxStudents,
         teacherId,
+        joinCode: await this.generateJoinCode(),
       },
     });
 
@@ -115,6 +152,49 @@ export class ClassService {
     return cls;
   }
 
+  async joinByCode(rawCode: string, studentId: string) {
+    const code = rawCode.trim().toUpperCase();
+    const cls = await this.prisma.class.findUnique({
+      where: { joinCode: code },
+      include: { students: { where: { id: studentId }, select: { id: true } }, _count: { select: { students: true } } },
+    });
+
+    if (!cls) throw new NotFoundException('Class invite code not found');
+    if (cls.joinStatus !== 'OPEN') {
+      throw new BadRequestException(
+        cls.joinStatus === 'PAUSED'
+          ? 'This class is temporarily not accepting new students.'
+          : 'This class is no longer accepting new students.',
+      );
+    }
+    if (cls.students.length) return { message: 'You are already enrolled in this class', class: this.formatClass(cls) };
+    if (cls.maxStudents !== null && cls.maxStudents !== undefined && cls._count.students >= cls.maxStudents) {
+      throw new BadRequestException('This class is full');
+    }
+
+    const joinedClass = await this.prisma.class.update({
+      where: { id: cls.id },
+      data: { students: { connect: { id: studentId } } },
+      include: {
+        teacher: { select: { firstName: true, lastName: true, email: true } },
+        _count: { select: { students: true, classTasks: true } },
+      },
+    });
+
+    return { message: 'Joined class successfully', class: this.formatClass(joinedClass) };
+  }
+
+  async regenerateJoinCode(id: string, user: { sub: string; role: string }) {
+    await this.assertClassAccess(id, user);
+    const joinCode = await this.generateJoinCode();
+    return this.prisma.class.update({ where: { id }, data: { joinCode }, select: { id: true, joinCode: true, joinStatus: true } });
+  }
+
+  async updateJoinStatus(id: string, status: ClassJoinStatus, user: { sub: string; role: string }) {
+    await this.assertClassAccess(id, user);
+    return this.prisma.class.update({ where: { id }, data: { joinStatus: status }, select: { id: true, joinCode: true, joinStatus: true } });
+  }
+
   async findAll(userId: string, role: string, query: PaginationQueryDto) {
     const { page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
@@ -122,11 +202,6 @@ export class ClassService {
     const include = {
       teacher: { select: { firstName: true, lastName: true, email: true } },
       _count: { select: { students: true, classTasks: true } },
-      classTasks: {
-        include: {
-          task: { select: { id: true, title: true, type: true, status: true } },
-        },
-      },
     };
 
     let where: any = {};
@@ -150,7 +225,8 @@ export class ClassService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, user: { sub: string; role: string }) {
+    await this.assertClassAccess(id, user);
     const cls = await this.prisma.class.findUnique({
       where: { id },
       include: {
@@ -174,13 +250,15 @@ export class ClassService {
 
     return {
       ...this.formatClass(cls),
+      joinCode: user.role === 'teacher' ? cls.joinCode : undefined,
       students: cls.students,
       tasks: cls.classTasks.map(this.formatClassTask),
     };
   }
 
-  async update(id: string, dto: UpdateClassDto) {
-    const { taskIds, ...rest } = dto;
+  async update(id: string, dto: UpdateClassDto, user: { sub: string; role: string }) {
+    await this.assertClassAccess(id, user);
+    const { taskIds, maxStudents, ...rest } = dto;
 
     return this.prisma.$transaction(async (tx) => {
       const cls = await tx.class.findUnique({
@@ -200,6 +278,17 @@ export class ClassService {
       }
 
       const plan = subscription.plan;
+
+      const updateData: any = { ...rest };
+      if (maxStudents !== undefined) {
+        updateData.maxStudents =
+          maxStudents === null || maxStudents === 0 ? null : maxStudents;
+      }
+
+      await tx.class.update({
+        where: { id },
+        data: updateData,
+      });
 
       if (taskIds) {
         // Plan limit check
@@ -221,11 +310,6 @@ export class ClassService {
         const toRemove = existing
           .filter((t) => !taskIds.includes(t.taskId))
           .map((t) => t.id);
-
-        await tx.class.update({
-          where: { id },
-          data: rest,
-        });
 
         if (toAdd.length) {
           await tx.classTask.createMany({
@@ -268,17 +352,20 @@ export class ClassService {
     });
   }
 
-  async remove(id: string) {
+  async remove(id: string, user: { sub: string; role: string }) {
+    await this.assertClassAccess(id, user);
     return this.prisma.class.delete({ where: { id } });
   }
 
   // ─── Student Enrollment ───────────────────────────────────────
 
-  async addStudents(classId: string, studentIds: string[]) {
+  async addStudents(classId: string, studentIds: string[], user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
+    const uniqueStudentIds = [...new Set(studentIds)];
     return this.prisma.$transaction(async (tx) => {
       const cls = await tx.class.findUnique({
         where: { id: classId },
-        select: { teacherId: true },
+        select: { teacherId: true, maxStudents: true, students: { select: { id: true } } },
       });
 
       if (!cls) {
@@ -296,20 +383,22 @@ export class ClassService {
 
       const plan = subscription.plan;
 
-      // current students
-      const currentStudents = await tx.user.count({
-        where: {
-          enrolledClasses: {
-            some: { id: classId },
-          },
-        },
+      const validStudents = await tx.user.findMany({
+        where: { id: { in: uniqueStudentIds }, role: 'student' },
+        select: { id: true },
       });
 
-      const totalAfterAdd = currentStudents + studentIds.length;
+      if (validStudents.length !== uniqueStudentIds.length) {
+        throw new BadRequestException('Only active student accounts can be added to a class.');
+      }
 
-      if (totalAfterAdd > plan.maxStudentsPerClass) {
+      const enrolledIds = new Set(cls.students.map((student) => student.id));
+      const studentsToAdd = validStudents.filter((student) => !enrolledIds.has(student.id));
+      const totalAfterAdd = cls.students.length + studentsToAdd.length;
+
+      if (cls.maxStudents !== null && cls.maxStudents !== undefined && totalAfterAdd > cls.maxStudents) {
         throw new BadRequestException(
-          `Student limit exceeded. Your plan allows ${plan.maxStudentsPerClass} students per class.`,
+          `Student limit exceeded. This class allows a maximum of ${cls.maxStudents} students.`,
         );
       }
 
@@ -317,14 +406,15 @@ export class ClassService {
         where: { id: classId },
         data: {
           students: {
-            connect: studentIds.map((id) => ({ id })),
+            connect: studentsToAdd.map(({ id }) => ({ id })),
           },
         },
       });
     });
   }
 
-  async getStudents(classId: string, query: StudentQuery) {
+  async getStudents(classId: string, query: StudentQuery, user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
     const { page = 1, limit = 10, search } = query;
 
     const skip = (page - 1) * limit;
@@ -454,7 +544,8 @@ export class ClassService {
       },
     };
   }
-  async removeStudents(classId: string, studentIds: string[]) {
+  async removeStudents(classId: string, studentIds: string[], user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
     return this.prisma.class.update({
       where: { id: classId },
       data: {
@@ -463,9 +554,18 @@ export class ClassService {
     });
   }
 
+  async leave(classId: string, user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
+    return this.prisma.class.update({
+      where: { id: classId },
+      data: { students: { disconnect: { id: user.sub } } },
+    });
+  }
+
   // ─── Class Tasks ──────────────────────────────────────────────
 
-  async addTasks(classId: string, taskIds: string[]) {
+  async addTasks(classId: string, taskIds: string[], user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
     // Verify class exists
     const cls = await this.prisma.class.findUnique({ where: { id: classId } });
     if (!cls) throw new NotFoundException('Class not found');
@@ -479,7 +579,7 @@ export class ClassService {
       skipDuplicates: true,
     });
 
-    return this.getClassTasks(classId);
+    return this.getClassTasks(classId, user);
   }
 
   /**
@@ -529,7 +629,8 @@ export class ClassService {
     }
   }
 
-  async getClassTasks(classId: string) {
+  async getClassTasks(classId: string, user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
     const classTasks = await this.prisma.classTask.findMany({
       where: { classId },
       include: {
@@ -542,7 +643,8 @@ export class ClassService {
     return classTasks.map(this.formatClassTask);
   }
 
-  async removeTasks(classId: string, taskIds: string[]) {
+  async removeTasks(classId: string, taskIds: string[], user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
     await this.prisma.classTask.deleteMany({
       where: {
         classId,
@@ -555,11 +657,26 @@ export class ClassService {
 
   // ─── Scheduling ───────────────────────────────────────────────
 
-  async scheduleTask(classId: string, dto: ScheduleTaskDto) {
+  async scheduleTask(classId: string, dto: ScheduleTaskDto, user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
+    const dueAt = dto.dueAt ? new Date(dto.dueAt) : null;
+    if (dueAt && dueAt <= new Date()) {
+      throw new BadRequestException('Due date must be in the future.');
+    }
     // Verify ClassTask belongs to this class
     const classTask = await this.prisma.classTask.findFirst({
       where: { id: dto.classTaskId, classId },
-      include: { task: true },
+      include: {
+        task: {
+          select: {
+            status: true,
+            questions: {
+              where: { type: { not: 'INSTRUCTION' } },
+              select: { id: true },
+            },
+          },
+        },
+      },
     });
 
     if (!classTask) {
@@ -572,29 +689,40 @@ export class ClassService {
       );
     }
 
+    if (!classTask.task.questions.length) {
+      throw new BadRequestException('Only activities with at least one question can be scheduled.');
+    }
+
     // Upsert scheduled task
     return this.prisma.classScheduledTask.upsert({
       where: { classTaskId: dto.classTaskId },
       update: {
-        dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
+        dueAt,
         isActive: dto.isActive ?? true,
       },
       create: {
         classTaskId: dto.classTaskId, // only this needed
-        dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
+        dueAt,
         isActive: dto.isActive ?? true,
       },
     });
   }
 
   async getScheduledTasks(classId: string, req: any) {
+    await this.assertClassAccess(classId, req);
     const role = req.role;
     const studentId = req.sub;
 
     const classTasks = await this.prisma.classTask.findMany({
       where: {
         classId,
-        ...(role === 'student' ? { scheduledTask: { isActive: true } } : {}),
+        ...(role === 'student'
+          ? {
+              scheduledTask: {
+                isActive: true,
+              },
+            }
+          : {}),
       },
       include: {
         task: {
@@ -603,6 +731,10 @@ export class ClassService {
             title: true,
             type: true,
             status: true,
+            questions: {
+              where: { type: { not: 'INSTRUCTION' } },
+              select: { config: true },
+            },
             _count: { select: { questions: true } },
           },
         },
@@ -615,6 +747,10 @@ export class ClassService {
               select: {
                 id: true,
                 status: true,
+                score: true,
+                percentage: true,
+                isPassed: true,
+                completedAt: true,
                 _count: {
                   select: { answers: true },
                 },
@@ -638,7 +774,11 @@ export class ClassService {
       .map((ct) => {
         const base = this.formatClassTask(ct);
 
-        const totalQuestions = ct.task._count.questions;
+        const totalQuestions = ct.task.questions.length;
+        const totalMarks = ct.task.questions.reduce((sum, question) => {
+          const marks = (question.config as any)?.marks;
+          return sum + (typeof marks === 'number' ? marks : 1);
+        }, 0);
 
         // ----------------------
         // TEACHER VIEW
@@ -646,6 +786,14 @@ export class ClassService {
         if (role !== 'student') {
           const totalStudents = ct.class._count.students;
           const completedStudents = ct.scheduledTask!.attempts.length;
+          const averagePercentage = completedStudents
+            ? Math.round(
+                ct.scheduledTask!.attempts.reduce(
+                  (sum, attempt) => sum + (attempt.percentage ?? 0),
+                  0,
+                ) / completedStudents,
+              )
+            : 0;
 
           const completionRate =
             totalStudents === 0
@@ -657,6 +805,8 @@ export class ClassService {
             totalStudents,
             completedStudents,
             completionRate,
+            averagePercentage,
+            totalMarks,
           };
         }
 
@@ -678,6 +828,11 @@ export class ClassService {
           }
         }
 
+        const isOverdue = Boolean(
+          ct.scheduledTask!.dueAt && ct.scheduledTask!.dueAt < new Date(),
+        );
+        if (isOverdue && status !== 'COMPLETED') status = 'OVERDUE';
+
         const progressPercentage =
           totalQuestions === 0
             ? 0
@@ -689,10 +844,17 @@ export class ClassService {
           answeredQuestions,
           progressPercentage,
           status,
+          score: attempt?.score ?? null,
+          percentage: attempt?.percentage ?? null,
+          isPassed: attempt?.isPassed ?? null,
+          completedAt: attempt?.completedAt ?? null,
+          totalMarks,
+          canAttempt: !isOverdue && status !== 'COMPLETED',
         };
       });
   }
-  async unscheduleTask(classId: string, classTaskId: string) {
+  async unscheduleTask(classId: string, classTaskId: string, user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
     // Verify it belongs to this class
     const classTask = await this.prisma.classTask.findFirst({
       where: { id: classTaskId, classId },
@@ -707,10 +869,13 @@ export class ClassService {
     return { message: 'Task unscheduled successfully' };
   }
 
-  async getScheduledTaskAnalytics(classId: string, scheduledTaskId: string) {
+  async getScheduledTaskAnalytics(classId: string, scheduledTaskId: string, user: { sub: string; role: string }) {
+    await this.assertClassAccess(classId, user);
     const scheduledTask = await this.prisma.classScheduledTask.findUnique({
       where: { id: scheduledTaskId },
       select: {
+        scheduledAt: true,
+        dueAt: true,
         classTask: {
           select: {
             classId: true,
@@ -733,18 +898,30 @@ export class ClassService {
     const classData = await this.prisma.class.findUnique({
       where: { id: classId },
       select: {
-        _count: { select: { students: true } },
+        students: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
       },
     });
 
-    const totalStudents = classData?._count.students ?? 0;
+    const totalStudents = classData?.students.length ?? 0;
 
-    const completedStudents = await this.prisma.attempt.count({
+    const attempts = await this.prisma.attempt.findMany({
       where: {
         scheduledTaskId,
-        status: 'COMPLETED',
+      },
+      select: {
+        studentId: true,
+        status: true,
+        score: true,
+        percentage: true,
+        isPassed: true,
+        startedAt: true,
+        completedAt: true,
       },
     });
+    const completedAttempts = attempts.filter((attempt) => attempt.status === 'COMPLETED');
+    const completedStudents = completedAttempts.length;
 
     const completionRate =
       totalStudents === 0
@@ -802,6 +979,7 @@ export class ClassService {
     const taskQuestions = await this.prisma.question.findMany({
       where: {
         taskId: scheduledTask.classTask.task.id,
+        type: { not: 'INSTRUCTION' },
       },
       select: {
         id: true,
@@ -830,11 +1008,52 @@ export class ClassService {
       };
     });
 
+    const totalMarks = taskQuestions.reduce((sum, question) => {
+      const marks = (question.config as any)?.marks;
+      return sum + (typeof marks === 'number' ? marks : 1);
+    }, 0);
+    const attemptsByStudent = new Map(attempts.map((attempt) => [attempt.studentId, attempt]));
+    const students = (classData?.students ?? []).map((student) => {
+      const attempt = attemptsByStudent.get(student.id);
+      const isOverdue = Boolean(
+        scheduledTask.dueAt && scheduledTask.dueAt < new Date(),
+      );
+      return {
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`.trim(),
+        email: student.email,
+        status:
+          attempt?.status === 'COMPLETED'
+            ? 'COMPLETED'
+            : isOverdue
+              ? 'OVERDUE'
+              : (attempt?.status ?? 'NOT_STARTED'),
+        score: attempt?.status === 'COMPLETED' ? attempt.score : null,
+        percentage: attempt?.status === 'COMPLETED' ? attempt.percentage : null,
+        isPassed: attempt?.status === 'COMPLETED' ? attempt.isPassed : null,
+        startedAt: attempt?.startedAt ?? null,
+        completedAt: attempt?.completedAt ?? null,
+      };
+    });
+    const averagePercentage = completedStudents
+      ? Math.round(
+          completedAttempts.reduce(
+            (sum, attempt) => sum + (attempt.percentage ?? 0),
+            0,
+          ) / completedStudents,
+        )
+      : 0;
+
     return {
       task: scheduledTask.classTask.task,
+      scheduledAt: scheduledTask.scheduledAt,
+      dueAt: scheduledTask.dueAt,
       totalStudents,
       completedStudents,
       completionRate,
+      averagePercentage,
+      totalMarks,
+      students,
       questions,
     };
   }

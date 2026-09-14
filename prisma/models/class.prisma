@@ -4,13 +4,23 @@ model Class {
   subject     String
   description String?
   color       String
-  maxStudents Int
+  maxStudents Int?
   teacherId   String
+  joinCode    String          @unique
+  joinStatus  ClassJoinStatus @default(OPEN)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   teacher     User        @relation("TeacherClasses", fields: [teacherId], references: [id])
   classTasks  ClassTask[]
   students    User[]      @relation("StudentClasses")
+
+  @@index([teacherId])
+}
+
+enum ClassJoinStatus {
+  OPEN
+  PAUSED
+  CLOSED
 }
 
 model ClassTask {
@@ -23,6 +33,7 @@ model ClassTask {
   task          Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@unique([classId, taskId])
+  @@index([classId])
 }
 
 model ClassScheduledTask {
@@ -36,4 +47,7 @@ model ClassScheduledTask {
   attempts             Attempt[]
   classTask            ClassTask         @relation(fields: [classTaskId], references: [id], onDelete: Cascade)
   studentActivities    StudentActivity[]
+
+  @@index([scheduledAt])
+  @@index([isActive, dueAt])
 }

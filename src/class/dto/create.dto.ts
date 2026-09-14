@@ -5,8 +5,11 @@ import {
   IsDateString,
   IsBoolean,
   IsNumber,
+  IsIn,
 } from 'class-validator';
 import { PaginationQueryDto } from 'common/dto/pagination.dto';
+
+export type ClassJoinStatus = 'OPEN' | 'PAUSED' | 'CLOSED';
 
 export class CreateClassDto {
   @IsString()
@@ -22,6 +25,10 @@ export class CreateClassDto {
   @IsString()
   color!: string;
 
+  @IsOptional()
+  @IsNumber()
+  maxStudents?: number | null;
+
   // Task IDs to add to class on creation (optional)
   @IsOptional()
   @IsArray()
@@ -34,9 +41,8 @@ export class UpdateClassDto {
   @IsOptional() @IsString() subject?: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() color?: string;
-  @IsOptional() @IsNumber() maxStudents?: number;
+  @IsOptional() @IsNumber() maxStudents?: number | null;
   @IsOptional() @IsArray() @IsString({ each: true }) taskIds?: string[];
-
 }
 
 export class AddStudentsDto {
@@ -76,4 +82,13 @@ export class StudentQuery extends PaginationQueryDto {
   @IsString()
   search?: string;
 }
-  
+
+export class JoinClassDto {
+  @IsString()
+  code!: string;
+}
+
+export class UpdateJoinStatusDto {
+  @IsIn(['OPEN', 'PAUSED', 'CLOSED'])
+  status!: ClassJoinStatus;
+}
