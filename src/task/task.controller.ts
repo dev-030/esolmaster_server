@@ -32,12 +32,16 @@ export class TaskController {
   constructor(private readonly taskService: TaskService) {}
 
   @Post()
-  // @Roles(['admin', 'teacher'])
+  @Roles(['admin'])
   @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'images', maxCount: 10 },
-      { name: 'passageImage', maxCount: 1 },
-    ]),
+    FileFieldsInterceptor(
+      [
+        { name: 'images', maxCount: 10 },
+        { name: 'passageImage', maxCount: 1 },
+        { name: 'sectionImages', maxCount: 20 },
+      ],
+      { limits: { fileSize: 8 * 1024 * 1024, files: 31 } },
+    ),
   )
   async create(
     @Body() createTaskDto: CreateTaskDto,
@@ -46,12 +50,11 @@ export class TaskController {
     files?: {
       images?: Express.Multer.File[];
       passageImage?: Express.Multer.File[];
+      sectionImages?: Express.Multer.File[];
     },
   ) {
     const userId = req.user.sub;
-    const status = createTaskDto.status === 'DRAFT' 
-      ? 'DRAFT' 
-      : (req.user.role === 'admin' ? 'APPROVED' : 'PENDING_APPROVAL');
+    const status = createTaskDto.status === 'DRAFT' ? 'DRAFT' : 'APPROVED';
 
     return this.taskService.createTask(
       createTaskDto,
@@ -60,12 +63,15 @@ export class TaskController {
       req.user.role,
       files?.images,
       files?.passageImage?.[0], // single file
+      files?.sectionImages,
     );
   }
 
   @Patch(':id')
-  @Roles(['admin', 'teacher'])
-  @UseInterceptors(AnyFilesInterceptor())
+  @Roles(['admin'])
+  @UseInterceptors(
+    AnyFilesInterceptor({ limits: { fileSize: 8 * 1024 * 1024, files: 31 } }),
+  )
   async update(
     @Param('id') taskId: string,
     @Body() updateTaskDto: UpdateTaskDto,
@@ -83,14 +89,14 @@ export class TaskController {
 
 
   @Post('import-pdf')
-  // @Roles(['admin', 'teacher'])
+  @Roles(['admin'])
   @UseInterceptors(FileInterceptor('file'))
   async importPdf(@UploadedFile() file: Express.Multer.File) {
     return this.taskService.importPdf(file);
   }
 
   @Post(':taskId/questions')
-  @Roles(['admin', 'teacher'])
+  @Roles(['admin'])
   async addQuestions(
     @Param('taskId') taskId: string,
     @Body() questions: AddQuestionsDto,
@@ -114,19 +120,17 @@ export class TaskController {
   }
 
   @Get('scheduled')
+  @Roles(['teacher', 'student'])
   async getAllScheduledTasks(
     @Req() req: any,
     @Query() pagination: PaginationQueryDto,
   ) {
-    console.log('hit the api', req.user.sub);
     return await this.taskService.getAllScheduledTasks(req.user, pagination);
   }
 
   @Patch(':id/approve')
   @Roles(['admin'])
-  async approveTask(@Param('id') id: string, @Req() req) {
-    console.log('User attempting to approve task:', req.user.role); // Debugging line to check user info
-    console.log('Approving task with ID:', id); // Debugging line
+  async approveTask(@Param('id') id: string) {
     return this.taskService.updateStatus(id, 'APPROVED');
   }
 
@@ -137,12 +141,13 @@ export class TaskController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.taskService.findOne(id);
+  @Roles(['admin', 'teacher'])
+  async findOne(@Param('id') id: string, @Req() req: any) {
+    return this.taskService.findOne(id, req.user);
   }
 
   @Delete(':id')
-  @Roles(['admin', 'teacher'])
+  @Roles(['admin'])
   async remove(@Param('id') id: string, @Req() req) {
     return this.taskService.deleteTask(id, req.user);
   }

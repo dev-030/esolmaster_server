@@ -14,6 +14,8 @@ model User {
   taughtClasses          Class[]                @relation("TeacherClasses")
   notifications          Notification[]
   passwordResetCodes     PasswordResetCode[]
+  emailChangeCodes       EmailChangeCode[]
+  sessions               UserSession[]
   studentActivities      StudentActivity[]
   studentBadges          StudentBadge[]
   studentMonthlyStats    StudentMonthlyStats[]

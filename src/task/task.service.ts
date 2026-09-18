@@ -2,6 +2,7 @@ import axios from 'axios';
 import { parseOffice } from 'officeparser';
 import {
   ConflictException,
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -18,6 +19,7 @@ import { QuestionType } from 'src/database/prisma-client/enums';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { PaginationQueryDto } from 'common/dto/pagination.dto';
 import { OpenAIService } from './openai.service';
+import { randomUUID } from 'node:crypto';
 
 @Injectable()
 export class TaskService {
@@ -34,33 +36,9 @@ export class TaskService {
     role: string,
     files?: Express.Multer.File[],
     passageImage?: Express.Multer.File,
+    sectionImages: Express.Multer.File[] = [],
   ) {
-    // Process base64 temporary context images in content
-    if (dto.content && typeof dto.content === 'string' && dto.content.includes('data:image/')) {
-      try {
-        const parsedContent = JSON.parse(dto.content);
-        if (parsedContent.sections) {
-          for (const section of parsedContent.sections) {
-            if (section.imageUrl && section.imageUrl.startsWith('data:image/')) {
-              // Convert base64 to buffer
-              const base64Data = section.imageUrl.replace(/^data:image\/\w+;base64,/, "");
-              const buffer = Buffer.from(base64Data, 'base64');
-              const dummyFile = {
-                buffer,
-                originalname: 'context_image.png',
-                mimetype: 'image/png',
-                size: buffer.length
-              } as Express.Multer.File;
-              // Upload to permanent storage
-              section.imageUrl = await this.uploadService.uploadSingleImage(dummyFile, 'task_images');
-            }
-          }
-          dto.content = JSON.stringify(parsedContent);
-        }
-      } catch (err) {
-        console.error("Failed to process base64 images in content", err);
-      }
-    }
+    dto.content = await this.storeSectionImages(dto.content, sectionImages);
 
     const {
       title,
@@ -78,8 +56,6 @@ export class TaskService {
     let vocabularyItemsData:
       | { wordName: string; definition: string; imageUrl?: string }[]
       | undefined;
-
-    console.log('Images', files);
 
     /**
      * Handle Vocabulary Words
@@ -227,6 +203,11 @@ export class TaskService {
       fileMap.set(file.fieldname, file);
     }
 
+    dto.content = await this.storeSectionImages(
+      dto.content,
+      files.filter((file) => file.fieldname === 'sectionImages'),
+    );
+
     let newPassageImageUrl: string | undefined;
     const passageImage = fileMap.get('passageImage');
     if (passageImage) {
@@ -251,20 +232,7 @@ export class TaskService {
        * update questions
        */
       if (dto.updateQuestions?.length) {
-        for (const q of dto.updateQuestions) {
-          const updateData: any = {};
-
-          if (q.type !== undefined) updateData.type = q.type;
-          if (q.order !== undefined) updateData.order = q.order;
-          if (q.config !== undefined) updateData.config = q.config;
-          if (q.criterionId !== undefined)
-            updateData.criterionId = q.criterionId;
-
-          await tx.question.update({
-            where: { id: q.id },
-            data: updateData,
-          });
-        }
+        await this.updateQuestionsInBulk(tx, taskId, dto.updateQuestions);
       }
 
       /**
@@ -276,20 +244,23 @@ export class TaskService {
        */
       const createdQuestions: { clientKey: string; id: string }[] = [];
       if (dto.newQuestions?.length) {
-        for (const q of dto.newQuestions) {
-          const created = await tx.question.create({
-            data: {
-              taskId,
-              type: q.type as QuestionType,
-              order: q.order,
-              config: q.config,
-              criterionId: q.criterionId,
-            },
-          });
-          if (q.clientKey) {
-            createdQuestions.push({ clientKey: q.clientKey, id: created.id });
-          }
-        }
+        const rows = dto.newQuestions.map((q) => ({
+          id: randomUUID(),
+          taskId,
+          type: q.type as QuestionType,
+          order: q.order,
+          config: q.config,
+          criterionId: q.criterionId,
+          clientKey: q.clientKey,
+        }));
+        await tx.question.createMany({
+          data: rows.map(({ clientKey, ...row }) => row),
+        });
+        createdQuestions.push(
+          ...rows.flatMap(({ clientKey, id }) =>
+            clientKey ? [{ clientKey, id }] : [],
+          ),
+        );
       }
 
       /**
@@ -484,7 +455,70 @@ export class TaskService {
       });
 
       return { ...task, createdQuestions };
+    }, { timeout: 15_000 });
+  }
+
+  private async storeSectionImages(
+    content?: string,
+    files: Express.Multer.File[] = [],
+  ): Promise<string | undefined> {
+    if (!content || (!content.includes('__SECTION_IMAGE_') && files.length === 0)) {
+      return content;
+    }
+
+    let parsed: { sections?: { imageUrl?: string }[] };
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new BadRequestException('Assessment content must be valid JSON');
+    }
+
+    const markers = (parsed.sections || []).flatMap((section) => {
+      const match = section.imageUrl?.match(/^__SECTION_IMAGE_(\d+)__$/);
+      return match ? [Number(match[1])] : [];
     });
+    if (
+      markers.length !== files.length ||
+      markers.some((index) => index < 0 || index >= files.length)
+    ) {
+      throw new BadRequestException('One or more section images are missing');
+    }
+
+    const imageUrls = await Promise.all(
+      files.map((file) =>
+        this.uploadService.uploadSingleImage(file, 'task_images'),
+      ),
+    );
+
+    for (const section of parsed.sections || []) {
+      const match = section.imageUrl?.match(/^__SECTION_IMAGE_(\d+)__$/);
+      if (match) {
+        const imageUrl = imageUrls[Number(match[1])];
+        if (!imageUrl) throw new BadRequestException('A section image is missing');
+        section.imageUrl = imageUrl;
+      }
+    }
+
+    return JSON.stringify(parsed);
+  }
+
+  private async updateQuestionsInBulk(
+    tx: any,
+    taskId: string,
+    questions: NonNullable<UpdateTaskDto['updateQuestions']>,
+  ) {
+    await tx.$executeRaw`
+      UPDATE "Question" AS question
+      SET
+        "type" = COALESCE(changes.type::"QuestionType", question."type"),
+        "order" = COALESCE(changes."order", question."order"),
+        "config" = COALESCE(changes.config, question."config"),
+        "criterionId" = COALESCE(changes."criterionId", question."criterionId")
+      FROM jsonb_to_recordset(${JSON.stringify(questions)}::jsonb)
+        AS changes(id text, type text, "order" integer, config jsonb, "criterionId" text)
+      WHERE question.id = changes.id
+        AND question."taskId" = ${taskId}
+    `;
   }
 
   // Deterministic display/answer ordering: questions are grouped by type in this
@@ -517,14 +551,20 @@ export class TaskService {
       return a.createdAt.getTime() - b.createdAt.getTime();
     });
 
-    for (let i = 0; i < sorted.length; i++) {
-      const desired = i + 1;
-      if (sorted[i].order !== desired) {
-        await tx.question.update({
-          where: { id: sorted[i].id },
-          data: { order: desired },
-        });
-      }
+    const changed = sorted.flatMap((question, index) =>
+      question.order === index + 1
+        ? []
+        : [{ id: question.id, order: index + 1 }],
+    );
+    if (changed.length) {
+      await tx.$executeRaw`
+        UPDATE "Question" AS question
+        SET "order" = changes."order"
+        FROM jsonb_to_recordset(${JSON.stringify(changed)}::jsonb)
+          AS changes(id text, "order" integer)
+        WHERE question.id = changes.id
+          AND question."taskId" = ${taskId}
+      `;
     }
   }
 
@@ -586,10 +626,8 @@ export class TaskService {
     }
 
     if (role === 'teacher') {
-      where.OR = [
-        { createdById: userId },
-        { isPublic: true, status: 'APPROVED' },
-      ];
+      where.isPublic = true;
+      where.status = 'APPROVED';
     }
 
     const [rawData, total] = await this.prisma.$transaction([
@@ -629,7 +667,7 @@ export class TaskService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, user: { role: string; sub: string }) {
     const task = await this.prisma.task.findUnique({
       where: { id },
       include: {
@@ -641,6 +679,32 @@ export class TaskService {
     });
 
     if (!task) throw new NotFoundException('Task not found');
+    if (user.role !== 'admin' && (!task.isPublic || task.status !== 'APPROVED')) {
+      throw new ForbiddenException('This activity is not available.');
+    }
+
+    // Listing a premium activity is fine for discovery, but its content must
+    // not be readable unless the teacher's active package contains it.
+    if (user.role === 'teacher' && task.isPremium) {
+      const subscription = await this.prisma.userSubscription.findUnique({
+        where: { userId: user.sub },
+        select: { planId: true, billingStatus: true },
+      });
+      const hasAccess = Boolean(
+        subscription && ['ACTIVE', 'TRIALING', 'CANCELING'].includes(subscription.billingStatus),
+      );
+      if (!hasAccess) {
+        throw new ForbiddenException('An active package is required to view this premium activity.');
+      }
+
+      const entitlement = await this.prisma.planPremiumTask.findUnique({
+        where: { planId_taskId: { planId: subscription!.planId, taskId: task.id } },
+        select: { id: true },
+      });
+      if (!entitlement) {
+        throw new ForbiddenException('Your package does not include this premium activity.');
+      }
+    }
     return task;
   }
 
@@ -686,6 +750,7 @@ const where =
   role === 'student'
     ? {
         isActive: true,
+        OR: [{ dueAt: null }, { dueAt: { gte: new Date() } }],
         classTask: {
           class: {
             students: {
@@ -883,6 +948,7 @@ Your goal is to extract the logical structure of this paper, preserving meaning,
 - MCQ DEDUPLICATION: For MCQs, output ONLY \`options\` and \`correctIndex\` inside \`config\`. Do NOT include a redundant \`answer\` string.
 - NON-MCQs: For \`GAP_FILL\` or \`QUESTION_ANSWER\`, emit only \`"config": { "answer": "..." }\`.
 - EVIDENCE: Keep 'evidence' ultra-short (max 2-5 words).
+- EXPLANATION: Every question except INSTRUCTION must include a concise learner-facing \`explanation\` stating why the answer is correct, based only on the document. Use an empty string only for INSTRUCTION items.
 
 ## 2. DOCUMENT IDENTIFICATION
 Determine the documentType: "CANDIDATE_PAPER", "TUTOR_COPY", "ASSESSOR_PACK", "SAMPLE_PAPER", "PRACTICE_PAPER", or "UNKNOWN".
@@ -956,6 +1022,7 @@ Return ONLY valid JSON matching this structure:
       "mappedCriterion": "1.1",
       "type": "MCQ",
       "content": "What is the date of the event?",
+      "explanation": "The event date in the header is 12th October.",
       "marks": 1,
       "answerState": "AI_SOLVED",
       "confidence": "HIGH",
@@ -969,6 +1036,7 @@ Return ONLY valid JSON matching this structure:
       "sectionIndex": 1,
       "type": "GAP_FILL",
       "content": "The doctor is available on [gap].",
+      "explanation": "The notice says the doctor is available on Tuesday.",
       "marks": 1,
       "answerState": "AI_SOLVED",
       "confidence": "HIGH",

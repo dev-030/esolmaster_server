@@ -9,9 +9,9 @@ const teacher = 'teacher';
 
 @Controller('analytics')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles(['teacher'])
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
-  @Roles(['teacher'])
   @Get(`${teacher}/students`)
   async getAllStudentsProgress(
     @Req() req,

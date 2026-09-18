@@ -87,6 +87,7 @@ export class OpenAIService {
                   mappedCriterion: { type: ["string", "null"] },
                   type: { type: "string", enum: ["MCQ", "TRUE_FALSE", "GAP_FILL"] },
                   content: { type: "string" },
+                  explanation: { type: "string", description: "Brief learner-facing explanation of why the answer is correct" },
                   marks: { type: "number" },
                   answerState: { type: "string", enum: ["PRINTED", "AI_SOLVED", "TEACHER_PROVIDED", "VERIFIED", "CONFLICT", "UNKNOWN"] },
                   confidence: { type: "string", enum: ["HIGH", "MEDIUM", "LOW"] },
@@ -102,7 +103,7 @@ export class OpenAIService {
                     additionalProperties: false
                   }
                 },
-                required: ["sectionIndex", "type", "content", "marks", "answerState", "confidence", "evidence", "config"],
+                required: ["sectionIndex", "type", "content", "explanation", "marks", "answerState", "confidence", "evidence", "config"],
                 additionalProperties: false
               },
               {
@@ -112,6 +113,7 @@ export class OpenAIService {
                   mappedCriterion: { type: ["string", "null"] },
                   type: { type: "string", enum: ["QUESTION_ANSWER", "INSTRUCTION"] },
                   content: { type: "string" },
+                  explanation: { type: "string", description: "Brief learner-facing explanation of why the answer is correct; empty only for instructions" },
                   marks: { type: "number" },
                   answerState: { type: "string", enum: ["PRINTED", "AI_SOLVED", "TEACHER_PROVIDED", "VERIFIED", "CONFLICT", "UNKNOWN"] },
                   confidence: { type: "string", enum: ["HIGH", "MEDIUM", "LOW"] },
@@ -125,7 +127,7 @@ export class OpenAIService {
                     additionalProperties: false
                   }
                 },
-                required: ["sectionIndex", "type", "content", "marks", "answerState", "confidence", "evidence", "config"],
+                required: ["sectionIndex", "type", "content", "explanation", "marks", "answerState", "confidence", "evidence", "config"],
                 additionalProperties: false
               }
             ]

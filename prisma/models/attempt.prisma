@@ -20,6 +20,8 @@ model Attempt {
   answers              StudentAnswer[]
 
   @@unique([studentId, scheduledTaskId])
+  @@index([studentId, status, completedAt])
+  @@index([scheduledTaskId, status])
 }
 
 model StudentAnswer {

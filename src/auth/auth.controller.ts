@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Patch,
   Post,
   Query,
@@ -23,13 +25,16 @@ import type {
 import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { GoogleRoleGuard } from 'src/guards/google-role.guard';
+import { Roles } from 'src/decorator/role.decorator';
+import { RolesGuard } from 'src/guards/role.guard';
 
 @Controller('finder')
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles(['teacher'])
 export class FinderController {
   constructor(private readonly authService: AuthService) {}
   @Get()
   async find(@Query('search') search: string) {
-    console.log('Searching for student with identifier:', search);
     return await this.authService.findStudent(search);
   }
 }
@@ -235,5 +240,35 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt'))
   async changePassword(@Req() req: any, @Body() dto: any) {
     return this.authService.changePassword(req.user.sub, dto);
+  }
+
+  @Post('send-email-otp')
+  @UseGuards(AuthGuard('jwt'))
+  async sendEmailChangeOtp(@Req() req: any, @Body() dto: any) {
+    return this.authService.sendEmailChangeOtp(req.user.sub, dto);
+  }
+
+  @Post('verify-email-otp')
+  @UseGuards(AuthGuard('jwt'))
+  async verifyEmailChangeOtp(@Req() req: any, @Body() dto: any) {
+    return this.authService.verifyEmailChangeOtp(req.user.sub, dto);
+  }
+
+  @Get('sessions')
+  @UseGuards(AuthGuard('jwt'))
+  async getSessions(@Req() req: any) {
+    return this.authService.getSessions(req.user.sub, req);
+  }
+
+  @Delete('sessions/all-other')
+  @UseGuards(AuthGuard('jwt'))
+  async revokeAllOtherSessions(@Req() req: any) {
+    return this.authService.revokeAllOtherSessions(req.user.sub, req);
+  }
+
+  @Delete('sessions/:sessionId')
+  @UseGuards(AuthGuard('jwt'))
+  async revokeSession(@Req() req: any, @Param('sessionId') sessionId: string) {
+    return this.authService.revokeSession(req.user.sub, sessionId);
   }
 }

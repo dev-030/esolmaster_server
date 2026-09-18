@@ -10,6 +10,8 @@ model StudentActivity {
   attempt         Attempt?            @relation(fields: [attemptId], references: [id])
   scheduledTask   ClassScheduledTask? @relation(fields: [scheduledTaskId], references: [id])
   student         User                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, createdAt])
 }
 
 model Badge {

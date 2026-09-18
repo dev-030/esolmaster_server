@@ -3,13 +3,17 @@ import { FolderService } from './folder.service';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { UpdateFolderDto } from './dto/update-folder.dto';
 
+import { AuthGuard } from '@nestjs/passport';
+import { RolesGuard } from 'src/guards/role.guard';
+import { Roles } from 'src/decorator/role.decorator';
+
 @Controller('folder')
-// Depending on auth strategy, usually folders are managed by admins, but for now we expose them.
-// We can add @UseGuards(AuthGuard, RolesGuard) if needed.
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 export class FolderController {
   constructor(private readonly folderService: FolderService) {}
 
   @Post()
+  @Roles(['admin'])
   create(@Body() createFolderDto: CreateFolderDto) {
     return this.folderService.create(createFolderDto);
   }
@@ -25,11 +29,13 @@ export class FolderController {
   }
 
   @Patch(':id')
+  @Roles(['admin'])
   update(@Param('id') id: string, @Body() updateFolderDto: UpdateFolderDto) {
     return this.folderService.update(id, updateFolderDto);
   }
 
   @Delete(':id')
+  @Roles(['admin'])
   remove(@Param('id') id: string) {
     return this.folderService.remove(id);
   }

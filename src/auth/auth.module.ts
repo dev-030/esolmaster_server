@@ -10,8 +10,6 @@ import { GoogleStrategy } from './google.strategy';
 import { JwtStrategy } from './jwt.strategy';
 import { GuardModule } from 'src/guards/guard.module';
 
-  console.log('JWT_SECRET: on auth module', process.env.JWT_SECRET);
-
 @Module({
   imports: [
     PrismaModule,

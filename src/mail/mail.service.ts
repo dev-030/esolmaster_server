@@ -64,6 +64,35 @@ export class MailService {
     return this.send(to, 'Your password reset code', html);
   }
 
+  // ✉️ Email Change OTP
+  async sendEmailChangeCode(to: string, code: string): Promise<boolean> {
+    const html = `
+      <div style="font-family: Arial, sans-serif; padding:24px; max-width:480px; margin:auto;">
+        <h2 style="color:#0f172a;">Verify Your New Email</h2>
+        <p>Hello,</p>
+        <p>You recently requested to change your email address. Use this verification code to confirm the change:</p>
+        <div style="margin:24px 0; text-align:center;">
+          <span style="
+            display:inline-block;
+            font-size:32px;
+            letter-spacing:10px;
+            font-weight:bold;
+            color:#2563eb;
+            background:#eff6ff;
+            padding:14px 24px;
+            border-radius:10px;
+          ">${code}</span>
+        </div>
+        <p>This code expires in <b>10 minutes</b>. Do not share it with anyone.</p>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+        <p style="font-size:12px;color:#666;">
+          If you didn't request an email change, please secure your account immediately.
+        </p>
+      </div>
+    `;
+    return this.send(to, 'Verify your new email address', html);
+  }
+
   /**
    * Generic notification email (task opened, task ending soon, subscription
    * expiring, etc). Best-effort — returns whether it was accepted by the SMTP server.

@@ -193,6 +193,7 @@ export class AdminService {
     const [
       users,
       total,
+      totalAllUsers,
       totalStudents,
       totalTeachers,
       activeUsers,
@@ -208,6 +209,11 @@ export class AdminService {
         include: {
           student: true,
           teacher: true,
+          userSubscription: {
+            include: {
+              plan: true,
+            },
+          },
           _count: {
             select: {
               enrolledClasses: true,
@@ -224,6 +230,8 @@ export class AdminService {
       }),
 
       this.prisma.user.count({ where }),
+
+      this.prisma.user.count(),
 
       this.prisma.user.count({
         where: { role: 'student' },
@@ -242,44 +250,68 @@ export class AdminService {
       }),
     ]);
 
-    const data = users.map((user) => ({
-      id: user.id,
-      name: `${user.firstName} ${user.lastName}`,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      role: user.role,
+    const data = users.map((user) => {
+      let subscription: {
+        planName: string;
+        planType: string;
+        billingCycle?: string;
+        billingStatus?: string;
+      } | null = null;
 
-      status: user.isActive ? 'Active' : 'Inactive',
-      isActive: user.isActive,
+      if (user.userSubscription?.plan) {
+        subscription = {
+          planName: user.userSubscription.plan.name,
+          planType: user.userSubscription.plan.type,
+          billingCycle: user.userSubscription.billingCycle ?? undefined,
+          billingStatus: user.userSubscription.billingStatus ?? undefined,
+        };
+      } else if (user.role === 'teacher') {
+        subscription = {
+          planName: 'Free',
+          planType: 'FREE',
+        };
+      }
 
-      joinedAt: user.createdAt,
+      return {
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        subscription,
 
-      lastActive:
-        user.role === 'student' ? user.student?.lastActiveDate : user.updatedAt,
+        status: user.isActive ? 'Active' : 'Inactive',
+        isActive: user.isActive,
 
-      avatarUrl: user.avatarUrl,
+        joinedAt: user.createdAt,
 
-      relatedInfo:
-        user.role === 'student'
-          ? {
-              username: user.student?.username,
-              level: user.student?.level,
-              totalXp: user.student?.totalXp,
-              currentStreak: user.student?.currentStreak,
-              longestStreak: user.student?.longestStreak,
-              enrolledClasses: user._count.enrolledClasses,
-              attempts: user._count.attempts,
-              badges: user._count.studentBadges,
-            }
-          : {
-              subject: user.teacher?.subject,
-              institution: user.teacher?.institution,
-              bio: user.teacher?.bio,
-              classes: user._count.taughtClasses,
-              tasksCreated: user._count.tasks,
-            },
-    }));
+        lastActive:
+          user.role === 'student' ? user.student?.lastActiveDate : user.updatedAt,
+
+        avatarUrl: user.avatarUrl,
+
+        relatedInfo:
+          user.role === 'student'
+            ? {
+                username: user.student?.username,
+                level: user.student?.level,
+                totalXp: user.student?.totalXp,
+                currentStreak: user.student?.currentStreak,
+                longestStreak: user.student?.longestStreak,
+                enrolledClasses: user._count.enrolledClasses,
+                attempts: user._count.attempts,
+                badges: user._count.studentBadges,
+              }
+            : {
+                subject: user.teacher?.subject,
+                institution: user.teacher?.institution,
+                bio: user.teacher?.bio,
+                classes: user._count.taughtClasses,
+                tasksCreated: user._count.tasks,
+              },
+      };
+    });
 
     const totalPages = Math.ceil(total / limit);
 
@@ -294,7 +326,7 @@ export class AdminService {
         hasPreviousPage: page > 1,
       },
       summary: {
-        totalUsers: total,
+        totalUsers: totalAllUsers,
         totalStudents,
         totalTeachers,
         activeUsers,
@@ -309,6 +341,11 @@ export class AdminService {
     include: {
       student: true,
       teacher: true,
+      userSubscription: {
+        include: {
+          plan: true,
+        },
+      },
 
       enrolledClasses: {
         select: {
@@ -463,6 +500,14 @@ export class AdminService {
       isOnboarded: user.isOnboarded,
       joinedAt: user.createdAt,
       lastActive: isStudent ? user.student?.lastActiveDate : user.updatedAt,
+      subscription: user.userSubscription?.plan
+        ? {
+            planName: user.userSubscription.plan.name,
+            planType: user.userSubscription.plan.type,
+            billingCycle: user.userSubscription.billingCycle,
+            billingStatus: user.userSubscription.billingStatus,
+          }
+        : (user.role === 'teacher' ? { planName: 'Free', planType: 'FREE' } : null),
     },
 
     statCards: isStudent

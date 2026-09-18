@@ -18,6 +18,16 @@ export class CreateCheckoutSessionDto {
   billingCycle!: 'MONTHLY' | 'ANNUAL';
 }
 
+export class ChangePlanDto {
+  @IsString()
+  @IsNotEmpty()
+  planId!: string;
+
+  @IsIn(['MONTHLY', 'ANNUAL'])
+  @IsNotEmpty()
+  billingCycle!: 'MONTHLY' | 'ANNUAL';
+}
+
 // Admin: create a package (subscription plan) — also synced to Stripe.
 export class CreatePlanDto {
   @IsString()

@@ -88,15 +88,47 @@ export class ClassService {
     class: ct.class ? { id: ct.class.id, name: ct.class.name } : null,
   });
 
-  // ─── Class CRUD ───────────────────────────────────────────────
-
-  async create(dto: CreateClassDto, teacherId: string) {
-    const subscription = await this.prisma.userSubscription.findUnique({
+  private async getOrCreateTeacherSubscription(teacherId: string, tx?: any) {
+    const client = tx || this.prisma;
+    let subscription = await client.userSubscription.findUnique({
       where: { userId: teacherId },
       include: { plan: true },
     });
 
-    if (!subscription || subscription.billingStatus !== 'ACTIVE') {
+    if (!subscription) {
+      const freePlan = await client.subscriptionPlan.findFirst({
+        where: { type: 'FREE', isActive: true },
+      });
+      if (freePlan) {
+        subscription = await client.userSubscription.create({
+          data: {
+            userId: teacherId,
+            planId: freePlan.id,
+            billingStatus: 'ACTIVE',
+            boughtPrice: 0,
+            discountAmount: 0,
+            finalPrice: 0,
+          },
+          include: { plan: true },
+        });
+      }
+    }
+
+    return subscription;
+  }
+
+  private hasTeacherAccess(subscription: { billingStatus: string } | null | undefined) {
+    return Boolean(
+      subscription && ['ACTIVE', 'TRIALING', 'CANCELING'].includes(subscription.billingStatus),
+    );
+  }
+
+  // ─── Class CRUD ───────────────────────────────────────────────
+
+  async create(dto: CreateClassDto, teacherId: string) {
+    const subscription = await this.getOrCreateTeacherSubscription(teacherId);
+
+    if (!this.hasTeacherAccess(subscription)) {
       throw new BadRequestException('No active subscription found');
     }
 
@@ -109,23 +141,28 @@ export class ClassService {
 
     if (classCount >= plan.maxClasses) {
       throw new BadRequestException(
-        `Your plan allows only ${plan.maxClasses} classes.`,
+        `Your plan allows only ${plan.maxClasses} classes. Please upgrade your subscription to create more classes.`,
       );
     }
 
     // Check tasks limit
     if (dto.taskIds && dto.taskIds.length > plan.maxScheduledTasksInClass) {
       throw new BadRequestException(
-        `Your plan allows only ${plan.maxScheduledTasksInClass} tasks per class.`,
+        `Your plan allows only ${plan.maxScheduledTasksInClass} assigned activities per class.`,
       );
     }
 
-    const maxStudents =
-      dto.maxStudents === null || dto.maxStudents === 0
-        ? null
-        : dto.maxStudents !== undefined && dto.maxStudents > 0
-          ? dto.maxStudents
-          : null;
+    let maxStudents: number | null = null;
+    if (dto.maxStudents !== undefined && dto.maxStudents !== null && dto.maxStudents > 0) {
+      if (dto.maxStudents > plan.maxStudentsPerClass) {
+        throw new BadRequestException(
+          `Your plan allows a maximum of ${plan.maxStudentsPerClass} students per class.`,
+        );
+      }
+      maxStudents = dto.maxStudents;
+    } else {
+      maxStudents = plan.maxStudentsPerClass;
+    }
 
     const cls = await this.prisma.class.create({
       data: {
@@ -156,7 +193,17 @@ export class ClassService {
     const code = rawCode.trim().toUpperCase();
     const cls = await this.prisma.class.findUnique({
       where: { joinCode: code },
-      include: { students: { where: { id: studentId }, select: { id: true } }, _count: { select: { students: true } } },
+      include: {
+        students: { where: { id: studentId }, select: { id: true } },
+        _count: { select: { students: true } },
+        teacher: {
+          include: {
+            userSubscription: {
+              include: { plan: true },
+            },
+          },
+        },
+      },
     });
 
     if (!cls) throw new NotFoundException('Class invite code not found');
@@ -168,8 +215,14 @@ export class ClassService {
       );
     }
     if (cls.students.length) return { message: 'You are already enrolled in this class', class: this.formatClass(cls) };
-    if (cls.maxStudents !== null && cls.maxStudents !== undefined && cls._count.students >= cls.maxStudents) {
-      throw new BadRequestException('This class is full');
+
+    const planLimit = cls.teacher?.userSubscription?.plan?.maxStudentsPerClass ?? 20;
+    const effectiveLimit = Math.min(
+      cls.maxStudents !== null && cls.maxStudents !== undefined ? cls.maxStudents : planLimit,
+      planLimit,
+    );
+    if (cls._count.students >= effectiveLimit) {
+      throw new BadRequestException('This class has reached its maximum student capacity.');
     }
 
     const joinedClass = await this.prisma.class.update({
@@ -268,12 +321,9 @@ export class ClassService {
 
       if (!cls) throw new NotFoundException('Class not found');
 
-      const subscription = await tx.userSubscription.findUnique({
-        where: { userId: cls.teacherId },
-        include: { plan: true },
-      });
+      const subscription = await this.getOrCreateTeacherSubscription(cls.teacherId, tx);
 
-      if (!subscription || subscription.billingStatus !== 'ACTIVE') {
+      if (!this.hasTeacherAccess(subscription)) {
         throw new BadRequestException('No active subscription');
       }
 
@@ -281,8 +331,13 @@ export class ClassService {
 
       const updateData: any = { ...rest };
       if (maxStudents !== undefined) {
+        if (maxStudents !== null && maxStudents > plan.maxStudentsPerClass) {
+          throw new BadRequestException(
+            `Your plan allows a maximum of ${plan.maxStudentsPerClass} students per class.`,
+          );
+        }
         updateData.maxStudents =
-          maxStudents === null || maxStudents === 0 ? null : maxStudents;
+          maxStudents === null || maxStudents === 0 ? plan.maxStudentsPerClass : maxStudents;
       }
 
       await tx.class.update({
@@ -294,7 +349,7 @@ export class ClassService {
         // Plan limit check
         if (taskIds.length > plan.maxScheduledTasksInClass) {
           throw new BadRequestException(
-            `Your plan allows only ${plan.maxScheduledTasksInClass} tasks per class.`,
+            `Your plan allows only ${plan.maxScheduledTasksInClass} assigned activities per class.`,
           );
         }
 
@@ -372,12 +427,9 @@ export class ClassService {
         throw new NotFoundException('Class not found');
       }
 
-      const subscription = await tx.userSubscription.findUnique({
-        where: { userId: cls.teacherId },
-        include: { plan: true },
-      });
+      const subscription = await this.getOrCreateTeacherSubscription(cls.teacherId, tx);
 
-      if (!subscription || subscription.billingStatus !== 'ACTIVE') {
+      if (!this.hasTeacherAccess(subscription)) {
         throw new BadRequestException('Teacher subscription inactive');
       }
 
@@ -395,10 +447,14 @@ export class ClassService {
       const enrolledIds = new Set(cls.students.map((student) => student.id));
       const studentsToAdd = validStudents.filter((student) => !enrolledIds.has(student.id));
       const totalAfterAdd = cls.students.length + studentsToAdd.length;
+      const effectiveLimit = Math.min(
+        cls.maxStudents !== null && cls.maxStudents !== undefined ? cls.maxStudents : plan.maxStudentsPerClass,
+        plan.maxStudentsPerClass,
+      );
 
-      if (cls.maxStudents !== null && cls.maxStudents !== undefined && totalAfterAdd > cls.maxStudents) {
+      if (totalAfterAdd > effectiveLimit) {
         throw new BadRequestException(
-          `Student limit exceeded. This class allows a maximum of ${cls.maxStudents} students.`,
+          `Student limit exceeded. This class allows a maximum of ${effectiveLimit} students under your current plan (${plan.name}).`,
         );
       }
 
@@ -567,15 +623,39 @@ export class ClassService {
   async addTasks(classId: string, taskIds: string[], user: { sub: string; role: string }) {
     await this.assertClassAccess(classId, user);
     // Verify class exists
-    const cls = await this.prisma.class.findUnique({ where: { id: classId } });
+    const cls = await this.prisma.class.findUnique({
+      where: { id: classId },
+      include: {
+        teacher: {
+          include: {
+            userSubscription: { include: { plan: true } },
+          },
+        },
+        classTasks: { select: { taskId: true } },
+      },
+    });
     if (!cls) throw new NotFoundException('Class not found');
+
+    if (!this.hasTeacherAccess(cls.teacher?.userSubscription)) {
+      throw new ForbiddenException('Your subscription is not active. Update billing to manage activities.');
+    }
+
+    const requestedTaskIds = [...new Set(taskIds)];
+    const existingTaskIds = new Set(cls.classTasks.map((classTask) => classTask.taskId));
+    const taskIdsToAdd = requestedTaskIds.filter((taskId) => !existingTaskIds.has(taskId));
+    const planTasksLimit = cls.teacher?.userSubscription?.plan?.maxScheduledTasksInClass ?? 5;
+    if (cls.classTasks.length + taskIdsToAdd.length > planTasksLimit) {
+      throw new BadRequestException(
+        `Your plan allows only ${planTasksLimit} activities per class. Upgrade your plan to add more.`,
+      );
+    }
 
     // Premium tasks are teacher-gated: the class's teacher must be on a package
     // that includes the task.
-    await this.assertTeacherCanUsePremiumTasks(cls.teacherId, taskIds);
+    await this.assertTeacherCanUsePremiumTasks(cls.teacherId, taskIdsToAdd);
 
     await this.prisma.classTask.createMany({
-      data: taskIds.map((taskId) => ({ classId, taskId })),
+      data: taskIdsToAdd.map((taskId) => ({ classId, taskId })),
       skipDuplicates: true,
     });
 
@@ -598,10 +678,7 @@ export class ClassService {
     });
     if (!premiumTasks.length) return;
 
-    const sub = await this.prisma.userSubscription.findUnique({
-      where: { userId: teacherId },
-      select: { planId: true, billingStatus: true },
-    });
+    const sub = await this.getOrCreateTeacherSubscription(teacherId);
 
     const activeStatuses = ['ACTIVE', 'TRIALING', 'CANCELING'];
     if (!sub || !activeStatuses.includes(sub.billingStatus)) {
@@ -690,7 +767,35 @@ export class ClassService {
     }
 
     if (!classTask.task.questions.length) {
-      throw new BadRequestException('Only activities with at least one question can be scheduled.');
+      throw new BadRequestException('Only activities with at least one question can be assigned.');
+    }
+
+    // Verify scheduled task limit if scheduling as active
+    if (dto.isActive !== false) {
+      const cls = await this.prisma.class.findUnique({
+        where: { id: classId },
+        include: {
+          teacher: {
+            include: { userSubscription: { include: { plan: true } } },
+          },
+        },
+      });
+      if (!this.hasTeacherAccess(cls?.teacher?.userSubscription)) {
+        throw new ForbiddenException('Your subscription is not active. Update billing to assign activities.');
+      }
+      const planTasksLimit = cls?.teacher?.userSubscription?.plan?.maxScheduledTasksInClass ?? 5;
+      const currentActiveCount = await this.prisma.classScheduledTask.count({
+        where: {
+          classTask: { classId },
+          isActive: true,
+          classTaskId: { not: dto.classTaskId },
+        },
+      });
+      if (currentActiveCount >= planTasksLimit) {
+        throw new BadRequestException(
+          `Your plan allows a maximum of ${planTasksLimit} active assigned activities per class.`,
+        );
+      }
     }
 
     // Upsert scheduled task
@@ -892,7 +997,7 @@ export class ClassService {
     });
 
     if (!scheduledTask || scheduledTask.classTask.classId !== classId) {
-      throw new NotFoundException('Scheduled task not found for this class');
+      throw new NotFoundException('Assigned activity not found for this class');
     }
 
     const classData = await this.prisma.class.findUnique({
@@ -911,6 +1016,7 @@ export class ClassService {
         scheduledTaskId,
       },
       select: {
+        id: true,
         studentId: true,
         status: true,
         score: true,
@@ -1022,6 +1128,7 @@ export class ClassService {
         id: student.id,
         name: `${student.firstName} ${student.lastName}`.trim(),
         email: student.email,
+        attemptId: attempt?.id ?? null,
         status:
           attempt?.status === 'COMPLETED'
             ? 'COMPLETED'

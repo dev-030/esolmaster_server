@@ -21,8 +21,11 @@ export class AttemptService {
   private calculateFinalResult(attempt: any) {
     const { task, answers, score } = attempt;
     const reading = task.readingContent;
-    
-    const totalMaxScore = task.questions.reduce((sum: number, q: any) => {
+    const assessableQuestions = task.questions.filter(
+      (question: any) => question.type !== 'INSTRUCTION',
+    );
+
+    const totalMaxScore = assessableQuestions.reduce((sum: number, q: any) => {
       const marks = (q.config as any)?.marks;
       return sum + (typeof marks === 'number' ? marks : 1);
     }, 0);
@@ -31,7 +34,7 @@ export class AttemptService {
     // 1. Get all unique criteria assigned to this test
     const requiredCriteria = [
       ...new Set(
-        task.questions.map((q) => q.criterion?.code).filter((code) => !!code),
+        assessableQuestions.map((q) => q.criterion?.code).filter((code) => !!code),
       ),
     ] as string[];
 
@@ -94,7 +97,10 @@ export class AttemptService {
   }
 
   private buildResult(attempt: any) {
-    const totalMaxScore = attempt.task.questions.reduce((sum: number, q: any) => {
+    const assessableQuestions = attempt.task.questions.filter(
+      (question: any) => question.type !== 'INSTRUCTION',
+    );
+    const totalMaxScore = assessableQuestions.reduce((sum: number, q: any) => {
       const marks = (q.config as any)?.marks;
       return sum + (typeof marks === 'number' ? marks : 1);
     }, 0);
@@ -118,7 +124,13 @@ export class AttemptService {
       : null;
 
     // 2. Map individual question results
-    const results = attempt.answers.map((answer: any) => {
+    const results = attempt.answers
+      .filter(
+        (answer: any) =>
+          attempt.task.questions.find((question: any) => question.id === answer.questionId)
+            ?.type !== 'INSTRUCTION',
+      )
+      .map((answer: any) => {
       const question = attempt.task.questions.find(
         (q: any) => q.id === answer.questionId,
       );
@@ -149,7 +161,7 @@ export class AttemptService {
           : null,
         ...resultData,
       };
-    });
+      });
 
     // 3. Return the comprehensive result object
     return {
@@ -177,11 +189,32 @@ export class AttemptService {
   async startOrResumeAttempt(studentId: string, scheduledTaskId: string) {
     const schedule = await this.prisma.classScheduledTask.findUnique({
       where: { id: scheduledTaskId },
-      include: { classTask: true },
+      include: {
+        attempts: {
+          where: { studentId },
+          select: { id: true, status: true },
+        },
+        classTask: {
+          include: {
+            class: {
+              select: {
+                students: { where: { id: studentId }, select: { id: true } },
+              },
+            },
+          },
+        },
+      },
     });
 
-    if (!schedule || !schedule.isActive) {
-      throw new BadRequestException('This task is not currently active.');
+    if (!schedule || !schedule.classTask.class.students.length) {
+      throw new ForbiddenException('You are not enrolled in this class.');
+    }
+
+    const existingAttempt = schedule.attempts[0];
+    if (existingAttempt?.status === 'COMPLETED') return existingAttempt;
+
+    if (!schedule.isActive || (schedule.dueAt && schedule.dueAt < new Date())) {
+      throw new BadRequestException('This activity is no longer accepting submissions.');
     }
 
     const attempt = await this.prisma.attempt.upsert({
@@ -277,14 +310,16 @@ export class AttemptService {
     const currentQuestion =
       attempt.task.questions[attempt.currentQuestionIndex];
 
+    if (!currentQuestion) {
+      throw new BadRequestException('This activity has no questions.');
+    }
+
     if (currentQuestion.id !== dto.questionId) {
       throw new BadRequestException('Incorrect question sequence');
     }
 
-    console.log(currentQuestion.config, 'from service');
-    console.log(dto.answerData);
-
-    const isCorrect = judgeAnswer(
+    const isInstruction = currentQuestion.type === 'INSTRUCTION';
+    const isCorrect = isInstruction ? false : judgeAnswer(
       currentQuestion.type,
       currentQuestion.config,
       dto.answerData,
@@ -298,14 +333,14 @@ export class AttemptService {
         data: {
           attemptId,
           questionId: dto.questionId,
-          answerData: dto.answerData,
+          answerData: isInstruction ? '' : dto.answerData,
           isCorrect,
         },
         include: { question: { include: { criterion: true } } },
       });
 
       // Update basic stats
-      const questionMarks = (newAnswer.question.config as any)?.marks;
+      const questionMarks = isInstruction ? 0 : (newAnswer.question.config as any)?.marks;
       const marksToAward = typeof questionMarks === 'number' ? questionMarks : 1;
       const newScore = isCorrect ? attempt.score + marksToAward : attempt.score;
 
@@ -337,7 +372,9 @@ export class AttemptService {
         data: finalUpdateData,
       });
       if (isLastQuestion) {
-        const totalMaxScore = attempt.task.questions.reduce((sum: number, q: any) => {
+        const totalMaxScore = attempt.task.questions
+          .filter((question: any) => question.type !== 'INSTRUCTION')
+          .reduce((sum: number, q: any) => {
           const m = (q.config as any)?.marks;
           return sum + (typeof m === 'number' ? m : 1);
         }, 0);

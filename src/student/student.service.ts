@@ -22,96 +22,82 @@ export class StudentService {
     );
     const endOfPreviousMonth = startOfCurrentMonth;
 
-    // Get student profile
-    const profile = await this.prisma.studentProfile.findUnique({
-      where: { userId: studentId },
-    });
-
-    // Get student's classes
-    const classes = await this.prisma.class.findMany({
-      where: {
-        students: {
-          some: { id: studentId },
+    const [profile, classes] = await Promise.all([
+      this.prisma.studentProfile.findUnique({ where: { userId: studentId } }),
+      this.prisma.class.findMany({
+        where: {
+          students: { some: { id: studentId } },
         },
-      },
-      select: { id: true },
-    });
+        select: { id: true },
+      }),
+    ]);
 
     const classIds = classes.map((c) => c.id);
 
-    // Scheduled tasks current month
-    const scheduledCurrent = await this.prisma.classScheduledTask.count({
-      where: {
-        scheduledAt: {
-          gte: startOfCurrentMonth,
-          lt: startOfNextMonth,
+    const [
+      scheduledCurrent,
+      scheduledPrevious,
+      completedCurrent,
+      completedPrevious,
+      xpCurrent,
+      xpPrevious,
+      activities,
+    ] = await Promise.all([
+      this.prisma.classScheduledTask.count({
+        where: {
+          scheduledAt: { gte: startOfCurrentMonth, lt: startOfNextMonth },
+          classTask: { classId: { in: classIds } },
         },
-        classTask: {
-          classId: { in: classIds },
+      }),
+      this.prisma.classScheduledTask.count({
+        where: {
+          scheduledAt: { gte: startOfPreviousMonth, lt: endOfPreviousMonth },
+          classTask: { classId: { in: classIds } },
         },
-      },
-    });
-
-    // Scheduled tasks previous month
-    const scheduledPrevious = await this.prisma.classScheduledTask.count({
-      where: {
-        scheduledAt: {
-          gte: startOfPreviousMonth,
-          lt: endOfPreviousMonth,
+      }),
+      this.prisma.attempt.count({
+        where: {
+          studentId,
+          status: 'COMPLETED',
+          completedAt: { gte: startOfCurrentMonth, lt: startOfNextMonth },
         },
-        classTask: {
-          classId: { in: classIds },
+      }),
+      this.prisma.attempt.count({
+        where: {
+          studentId,
+          status: 'COMPLETED',
+          completedAt: { gte: startOfPreviousMonth, lt: endOfPreviousMonth },
         },
-      },
-    });
-
-    // Completed tasks current month
-    const completedCurrent = await this.prisma.attempt.count({
-      where: {
-        studentId,
-        status: 'COMPLETED',
-        completedAt: {
-          gte: startOfCurrentMonth,
-          lt: startOfNextMonth,
+      }),
+      this.prisma.attempt.aggregate({
+        where: { studentId, completedAt: { gte: startOfCurrentMonth, lt: startOfNextMonth } },
+        _sum: { xpEarned: true },
+      }),
+      this.prisma.attempt.aggregate({
+        where: { studentId, completedAt: { gte: startOfPreviousMonth, lt: endOfPreviousMonth } },
+        _sum: { xpEarned: true },
+      }),
+      this.prisma.studentActivity.findMany({
+        where: { studentId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          xpEarned: true,
+          createdAt: true,
+          scheduledTask: {
+            select: {
+              classTask: {
+                select: {
+                  task: { select: { title: true, type: true } },
+                  class: { select: { name: true } },
+                },
+              },
+            },
+          },
         },
-      },
-    });
-
-    // Completed tasks previous month
-    const completedPrevious = await this.prisma.attempt.count({
-      where: {
-        studentId,
-        status: 'COMPLETED',
-        completedAt: {
-          gte: startOfPreviousMonth,
-          lt: endOfPreviousMonth,
-        },
-      },
-    });
-
-    // XP current month
-    const xpCurrent = await this.prisma.attempt.aggregate({
-      where: {
-        studentId,
-        completedAt: {
-          gte: startOfCurrentMonth,
-          lt: startOfNextMonth,
-        },
-      },
-      _sum: { xpEarned: true },
-    });
-
-    // XP previous month
-    const xpPrevious = await this.prisma.attempt.aggregate({
-      where: {
-        studentId,
-        completedAt: {
-          gte: startOfPreviousMonth,
-          lt: endOfPreviousMonth,
-        },
-      },
-      _sum: { xpEarned: true },
-    });
+      }),
+    ]);
 
     const xpCurrentValue = xpCurrent._sum.xpEarned ?? 0;
     const xpPreviousValue = xpPrevious._sum.xpEarned ?? 0;
@@ -154,25 +140,6 @@ export class StudentService {
     // const xpIntoLevel = totalXp % xpPerLevel;
     // const xpNeededForNextLevel = xpPerLevel - xpIntoLevel;
     const levelData = calculateLevel(profile?.totalXp ?? 0);
-
-    // Recent activity (unchanged)
-    const activities = await this.prisma.studentActivity.findMany({
-      where: { studentId },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      include: {
-        scheduledTask: {
-          include: {
-            classTask: {
-              include: {
-                task: true,
-                class: true,
-              },
-            },
-          },
-        },
-      },
-    });
 
     return {
       stats: {

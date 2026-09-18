@@ -10,3 +10,36 @@ model PasswordResetCode {
 
   @@index([userId])
 }
+
+model EmailChangeCode {
+  id         String    @id @default(nanoid())
+  userId     String
+  newEmail   String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserSession {
+  id           String   @id @default(nanoid())
+  userId       String
+  sessionToken String   @unique
+  userAgent    String?
+  browser      String?
+  os           String?
+  deviceType   String?
+  ipAddress    String?
+  city         String?
+  country      String?
+  lastActiveAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+

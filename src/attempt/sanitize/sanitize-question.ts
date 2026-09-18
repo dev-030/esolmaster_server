@@ -52,39 +52,44 @@ const toMatchingPairs = (config: any) => {
 
 export const sanitizeQuestion = (question: any) => {
   const config = parseConfig(question.config);
+  const safe = (safeConfig: Record<string, any>) => ({
+    ...safeConfig,
+    sectionId: config.sectionId,
+    marks: config.marks ?? question.marks ?? 1,
+  });
 
   switch (question.type) {
     case 'MCQ':
       return {
         ...question,
-        config: {
+        config: safe({
           question: config.question,
           options: config.options,
-        },
+        }),
       };
 
     case 'GAP_FILL':
       return {
         ...question,
-        config: {
+        config: safe({
           question: config.question,
           options: config.options,
-        },
+        }),
       };
 
     case 'MATCHING':
       return {
         ...question,
-        config: {
+        config: safe({
           question: config.question,
           pairs: toMatchingPairs(config),
-        },
+        }),
       };
 
     case 'WORD_BOX_MATCH':
       return {
         ...question,
-        config: {
+        config: safe({
           question: config.question,
           words: Array.isArray(config.words) ? config.words : [],
           sentences: Array.isArray(config.sentences)
@@ -103,7 +108,7 @@ export const sanitizeQuestion = (question: any) => {
                 })
                 .filter((sentence: any) => Boolean(sentence))
             : [],
-        },
+        }),
       };
 
     case 'ORDERING': {
@@ -117,25 +122,25 @@ export const sanitizeQuestion = (question: any) => {
 
       return {
         ...question,
-        config: {
+        config: safe({
           question: config.question,
           items: shuffled,
-        },
+        }),
       };
     }
 
     case 'QUESTION_ANSWER':
       return {
         ...question,
-        config: {
+        config: safe({
           question: config.question,
-        },
+        }),
       };
 
     default:
       return {
         ...question,
-        config,
+        config: safe(config),
       };
   }
 };

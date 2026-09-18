@@ -61,11 +61,23 @@ export class PaymentController {
     @Body() planDto: CreateCheckoutSessionDto,
   ) {
     const userId = req.user.sub;
+    const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : undefined);
 
     return this.paymentService.createCheckoutSession(
       userId,
       planDto,
+      origin,
     );
+  }
+
+  @Post('confirm-session')
+  @Roles([Role.teacher])
+  confirmCheckoutSession(
+    @Req() req,
+    @Body('sessionId') sessionId: string,
+  ) {
+    const userId = req.user.sub;
+    return this.paymentService.confirmCheckoutSession(userId, sessionId);
   }
 
   @Get('me')
@@ -85,6 +97,13 @@ export class PaymentController {
       userId,
     );
   }
+
+  @Post('portal')
+  createBillingPortalSession(@Req() req) {
+    const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : undefined);
+    return this.paymentService.createBillingPortalSession(req.user.sub, origin);
+  }
+
   /// Admin routes///
   @Get('admin/billing/overview')
   @Roles([Role.admin])

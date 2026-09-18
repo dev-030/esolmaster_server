@@ -8,6 +8,7 @@ import type { Response } from 'express';
 
 @Controller('admin')
 @UseGuards(AuthGuard('jwt'),RolesGuard)
+@Roles(['admin'])
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
     @Get('dashboard')
