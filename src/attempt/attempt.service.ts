@@ -235,7 +235,7 @@ export class AttemptService {
 
     return attempt;
   }
-  async getAttemptState(attemptId: string, studentId: string) {
+  async getAttemptState(attemptId: string, user: { sub: string, role: string }) {
     const attempt = await this.prisma.attempt.findUnique({
       where: { id: attemptId },
       include: {
@@ -250,11 +250,28 @@ export class AttemptService {
             },
           },
         },
+        scheduledTask: {
+          include: {
+            classTask: {
+              include: {
+                class: true,
+              },
+            },
+          },
+        },
         answers: true,
       },
     });
 
-    if (!attempt || attempt.studentId !== studentId) {
+    if (!attempt) {
+      throw new NotFoundException();
+    }
+
+    if (user.role === 'student' && attempt.studentId !== user.sub) {
+      throw new NotFoundException();
+    }
+
+    if (user.role === 'teacher' && attempt.scheduledTask?.classTask?.class?.teacherId !== user.sub) {
       throw new NotFoundException();
     }
 

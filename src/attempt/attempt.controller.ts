@@ -19,9 +19,9 @@ export class AttemptController {
 
   // 2. Get current state (used for frontend to re-hydrate UI)
   @Get(':id')
-  @Roles(['student'])
+  @Roles(['student', 'teacher'])
   getAttempt(@Param('id') id: string, @Req() req) {
-    return this.attemptService.getAttemptState(id, req.user.sub);
+    return this.attemptService.getAttemptState(id, req.user);
   }
 
   // 3. Submit an answer (The Judging Engine)
