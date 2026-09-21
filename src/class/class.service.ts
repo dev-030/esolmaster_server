@@ -844,25 +844,27 @@ export class ClassService {
           },
         },
 
-        scheduledTask: {
-          include: {
-            attempts: {
-              where:
-                role === 'student' ? { studentId } : { status: 'COMPLETED' },
-              select: {
-                id: true,
-                status: true,
-                score: true,
-                percentage: true,
-                isPassed: true,
-                completedAt: true,
-                _count: {
-                  select: { answers: true },
+        // Teachers only need aggregate completion data. Loading every completed
+        // attempt here grows with the whole class history.
+        scheduledTask:
+          role === 'student'
+            ? {
+                include: {
+                  attempts: {
+                    where: { studentId },
+                    select: {
+                      id: true,
+                      status: true,
+                      score: true,
+                      percentage: true,
+                      isPassed: true,
+                      completedAt: true,
+                      _count: { select: { answers: true } },
+                    },
+                  },
                 },
-              },
-            },
-          },
-        },
+              }
+            : true,
 
         class: {
           select: {
@@ -874,10 +876,37 @@ export class ClassService {
       },
     });
 
+    const scheduledTaskIds = classTasks.flatMap((classTask) =>
+      classTask.scheduledTask ? [classTask.scheduledTask.id] : [],
+    );
+    const completionStats =
+      role === 'student' || scheduledTaskIds.length === 0
+        ? new Map<string, { count: number; averagePercentage: number }>()
+        : new Map(
+            (
+              await this.prisma.attempt.groupBy({
+                by: ['scheduledTaskId'],
+                where: {
+                  scheduledTaskId: { in: scheduledTaskIds },
+                  status: 'COMPLETED',
+                },
+                _count: { _all: true },
+                _avg: { percentage: true },
+              })
+            ).map((stat) => [
+              stat.scheduledTaskId,
+              {
+                count: stat._count._all,
+                averagePercentage: Math.round(stat._avg.percentage ?? 0),
+              },
+            ]),
+          );
+
     return classTasks
       .filter((ct) => ct.scheduledTask !== null)
       .map((ct) => {
         const base = this.formatClassTask(ct);
+        const scheduledTask: any = ct.scheduledTask;
 
         const totalQuestions = ct.task.questions.length;
         const totalMarks = ct.task.questions.reduce((sum, question) => {
@@ -890,15 +919,9 @@ export class ClassService {
         // ----------------------
         if (role !== 'student') {
           const totalStudents = ct.class._count.students;
-          const completedStudents = ct.scheduledTask!.attempts.length;
-          const averagePercentage = completedStudents
-            ? Math.round(
-                ct.scheduledTask!.attempts.reduce(
-                  (sum, attempt) => sum + (attempt.percentage ?? 0),
-                  0,
-                ) / completedStudents,
-              )
-            : 0;
+          const stats = completionStats.get(scheduledTask.id);
+          const completedStudents = stats?.count ?? 0;
+          const averagePercentage = stats?.averagePercentage ?? 0;
 
           const completionRate =
             totalStudents === 0
@@ -918,7 +941,7 @@ export class ClassService {
         // ----------------------
         // STUDENT VIEW
         // ----------------------
-        const attempt = ct.scheduledTask!.attempts[0];
+        const attempt = scheduledTask.attempts[0];
 
         let answeredQuestions = 0;
         let status = 'NOT_STARTED';
@@ -934,7 +957,7 @@ export class ClassService {
         }
 
         const isOverdue = Boolean(
-          ct.scheduledTask!.dueAt && ct.scheduledTask!.dueAt < new Date(),
+          scheduledTask.dueAt && scheduledTask.dueAt < new Date(),
         );
         if (isOverdue && status !== 'COMPLETED') status = 'OVERDUE';
 

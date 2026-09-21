@@ -21,6 +21,7 @@ model Attempt {
 
   @@unique([studentId, scheduledTaskId])
   @@index([studentId, status, completedAt])
+  @@index([status, completedAt])
   @@index([scheduledTaskId, status])
   @@index([taskId])
 }

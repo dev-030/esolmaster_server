@@ -455,10 +455,14 @@ export class StudentService {
   },
 },
 task: {
-  include: {
-    grammarContent: true,
-    readingContent: true,
-    vocabularyItems: true,
+  select: {
+    id: true,
+    title: true,
+    type: true,
+    status: true,
+    xpPerQuestion: true,
+    grammarContent: { select: { entryType: true } },
+    readingContent: { select: { entryType: true } },
     questions: {
       select: {
         type: true,
@@ -468,15 +472,6 @@ task: {
       select: {
         questions: true,
       },
-    },
-    attempts: {
-      where: {
-        studentId,
-      },
-      select: {
-        status: true,
-      },
-      take: 1,
     },
   },
 },
