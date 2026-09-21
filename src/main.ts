@@ -4,11 +4,13 @@ import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import compression from 'compression';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule,{
     rawBody: true, // Enable raw body parsing for Stripe webhook signature verification
   });
+  app.use(compression());
   app.useBodyParser('json', { limit: '2mb' });
   app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
   app.enableCors({

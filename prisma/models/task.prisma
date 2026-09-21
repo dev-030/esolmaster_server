@@ -21,6 +21,11 @@ model Task {
   createdBy       User              @relation(fields: [createdById], references: [id])
   folder          Folder?           @relation(fields: [folderId], references: [id])
   vocabularyItems WordItem[]
+
+  @@index([folderId, status])
+  @@index([createdAt])
+  @@index([createdById])
+  @@index([isPublic, status])
 }
 
 model Folder {
