@@ -25,6 +25,9 @@ model User {
   teacher                TeacherProfile?
   userSubscription       UserSubscription?
   enrolledClasses        Class[]                @relation("StudentClasses")
+
+  @@index([role, createdAt])
+  @@index([role, isActive])
 }
 
 model TeacherProfile {

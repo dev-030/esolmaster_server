@@ -26,6 +26,8 @@ model Task {
   @@index([createdAt])
   @@index([createdById])
   @@index([isPublic, status])
+  @@index([folderId, isPublic, status, createdAt])
+  @@index([isPremium])
 }
 
 model Folder {
@@ -37,6 +39,8 @@ model Folder {
   parent    Folder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
   children  Folder[] @relation("FolderToFolder")
   tasks     Task[]
+
+  @@index([parentId, createdAt])
 }
 
 model ReadingTask {
@@ -66,6 +70,8 @@ model WordItem {
   definition String
   imageUrl   String?
   task       Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
 }
 
 model Question {
@@ -79,6 +85,9 @@ model Question {
   criterion      Criterion?      @relation(fields: [criterionId], references: [id])
   task           Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
   studentAnswers StudentAnswer[]
+
+  @@index([taskId, order])
+  @@index([criterionId])
 }
 
 enum EntryType {

@@ -61,6 +61,8 @@ model UserSubscription {
 
   @@index([planId])
   @@index([billingStatus])
+  @@index([stripeSubscriptionId])
+  @@index([stripeCustomerId])
 }
 
 // Durable record of Stripe deliveries. Stripe can retry events and deliver them

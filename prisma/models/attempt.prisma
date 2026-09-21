@@ -22,6 +22,7 @@ model Attempt {
   @@unique([studentId, scheduledTaskId])
   @@index([studentId, status, completedAt])
   @@index([scheduledTaskId, status])
+  @@index([taskId])
 }
 
 model StudentAnswer {
@@ -35,6 +36,7 @@ model StudentAnswer {
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([attemptId, questionId])
+  @@index([questionId])
 }
 
 enum AttemptStatus {
