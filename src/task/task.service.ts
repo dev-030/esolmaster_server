@@ -718,6 +718,15 @@ export class TaskService {
   async deleteTask(id: string, user: any) {
     const task = await this.prisma.task.findUnique({
       where: { id },
+      include: {
+        questions: { select: { id: true } },
+        classTasks: {
+          select: {
+            id: true,
+            scheduledTask: { select: { id: true } },
+          },
+        },
+      },
     });
     
     if (!task) {
@@ -728,8 +737,83 @@ export class TaskService {
       throw new ForbiddenException('You can only delete your own tasks');
     }
 
-    await this.prisma.task.delete({
-      where: { id },
+    const questionIds = task.questions.map((q) => q.id);
+    const classTaskIds = task.classTasks.map((ct) => ct.id);
+    const scheduledTaskIds = task.classTasks
+      .map((ct) => ct.scheduledTask?.id)
+      .filter((schedId): schedId is string => Boolean(schedId));
+
+    // Find all attempts tied directly to this task or its scheduled tasks
+    const attempts = await this.prisma.attempt.findMany({
+      where: {
+        OR: [
+          { taskId: id },
+          ...(scheduledTaskIds.length > 0
+            ? [{ scheduledTaskId: { in: scheduledTaskIds } }]
+            : []),
+        ],
+      },
+      select: { id: true },
+    });
+    const attemptIds = attempts.map((a) => a.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Delete student activities related to attempts or scheduled tasks
+      if (attemptIds.length > 0 || scheduledTaskIds.length > 0) {
+        await tx.studentActivity.deleteMany({
+          where: {
+            OR: [
+              ...(attemptIds.length > 0 ? [{ attemptId: { in: attemptIds } }] : []),
+              ...(scheduledTaskIds.length > 0
+                ? [{ scheduledTaskId: { in: scheduledTaskIds } }]
+                : []),
+            ],
+          },
+        });
+      }
+
+      // 2. Delete student answers related to attempts or questions
+      if (attemptIds.length > 0 || questionIds.length > 0) {
+        await tx.studentAnswer.deleteMany({
+          where: {
+            OR: [
+              ...(attemptIds.length > 0 ? [{ attemptId: { in: attemptIds } }] : []),
+              ...(questionIds.length > 0 ? [{ questionId: { in: questionIds } }] : []),
+            ],
+          },
+        });
+      }
+
+      // 3. Delete attempts
+      if (attemptIds.length > 0) {
+        await tx.attempt.deleteMany({
+          where: { id: { in: attemptIds } },
+        });
+      }
+
+      // 4. Delete ClassScheduledTasks
+      if (scheduledTaskIds.length > 0) {
+        await tx.classScheduledTask.deleteMany({
+          where: { id: { in: scheduledTaskIds } },
+        });
+      }
+
+      // 5. Delete ClassTasks
+      if (classTaskIds.length > 0) {
+        await tx.classTask.deleteMany({
+          where: { id: { in: classTaskIds } },
+        });
+      }
+
+      // 6. Delete PlanPremiumTask
+      await tx.planPremiumTask.deleteMany({
+        where: { taskId: id },
+      });
+
+      // 7. Finally delete the task (cascades questions, reading, grammar, vocab)
+      await tx.task.delete({
+        where: { id },
+      });
     });
     
     return { success: true };

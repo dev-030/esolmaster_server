@@ -7,8 +7,8 @@ model StudentActivity {
   xpEarned        Int                 @default(0)
   message         String?
   createdAt       DateTime            @default(now())
-  attempt         Attempt?            @relation(fields: [attemptId], references: [id])
-  scheduledTask   ClassScheduledTask? @relation(fields: [scheduledTaskId], references: [id])
+  attempt         Attempt?            @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  scheduledTask   ClassScheduledTask? @relation(fields: [scheduledTaskId], references: [id], onDelete: Cascade)
   student         User                @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@index([studentId, createdAt])

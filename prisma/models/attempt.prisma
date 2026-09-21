@@ -13,9 +13,9 @@ model Attempt {
   score                Int                @default(0)
   startedAt            DateTime           @default(now())
   completedAt          DateTime?
-  scheduledTask        ClassScheduledTask @relation(fields: [scheduledTaskId], references: [id])
+  scheduledTask        ClassScheduledTask @relation(fields: [scheduledTaskId], references: [id], onDelete: Cascade)
   student              User               @relation(fields: [studentId], references: [id])
-  task                 Task               @relation(fields: [taskId], references: [id])
+  task                 Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
   studentActivities    StudentActivity[]
   answers              StudentAnswer[]
 
@@ -32,7 +32,7 @@ model StudentAnswer {
   isCorrect  Boolean
   answeredAt DateTime @default(now())
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question   Question @relation(fields: [questionId], references: [id])
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([attemptId, questionId])
 }
