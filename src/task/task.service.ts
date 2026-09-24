@@ -532,6 +532,72 @@ export class TaskService {
     QuestionType.ORDERING,
   ];
 
+  private normalizeImportedQuestion(question: any) {
+    const normalized = {
+      ...question,
+      content: typeof question?.content === 'string' ? question.content.trim() : '',
+      config: { ...(question?.config || {}) },
+    };
+
+    if (normalized.type !== 'GAP_FILL') return normalized;
+
+    let foundGap = false;
+    normalized.content = normalized.content
+      .replace(/\[(?:gap|blank)\]/gi, '__')
+      .replace(/_{2,}|\.{3,}|…+/g, '__')
+      .replace(/__/g, () => {
+        if (foundGap) return '';
+        foundGap = true;
+        return '__';
+      })
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    if (!foundGap && /\([^()]+\)/.test(normalized.content)) {
+      normalized.content = normalized.content.replace(/\s*(\([^()]+\))/, ' __ $1');
+      foundGap = true;
+    }
+
+    let options = Array.isArray(normalized.config.options)
+      ? normalized.config.options
+          .map((option: unknown) => String(option ?? '').trim())
+          .filter(Boolean)
+      : [];
+    const answer = String(
+      normalized.config.answer ?? normalized.config.correctAnswer ?? '',
+    ).trim();
+    let correctIndex = Number.isInteger(normalized.config.correctIndex)
+      ? normalized.config.correctIndex
+      : -1;
+
+    if (answer && (correctIndex < 0 || correctIndex >= options.length)) {
+      correctIndex = options.findIndex(
+        (option: string) => option.toLowerCase() === answer.toLowerCase(),
+      );
+    }
+
+    // Bracketed grammar cues can be converted to a deterministic two-choice
+    // digital gap without inventing unrelated distractors.
+    if (options.length < 2 && answer) {
+      const cue = normalized.content.match(/\(([^()]+)\)/)?.[1]?.trim();
+      if (cue && cue.toLowerCase() !== answer.toLowerCase()) {
+        options = [cue, answer];
+        correctIndex = 1;
+      }
+    }
+
+    if (foundGap && options.length >= 2 && correctIndex >= 0 && correctIndex < options.length) {
+      normalized.config = { options, correctIndex };
+      return normalized;
+    }
+
+    // The app's GAP_FILL control is choice-based. Preserve an answer-only
+    // source as a text question instead of rendering empty answer buttons.
+    normalized.type = 'QUESTION_ANSWER';
+    normalized.config = { answer };
+    return normalized;
+  }
+
   private async normalizeTaskQuestionOrder(tx: any, taskId: string) {
     const questions = await tx.question.findMany({
       where: { taskId },
@@ -1023,14 +1089,14 @@ const where =
         const { parseOffice } = require('officeparser');
         const ast = await parseOffice(file.buffer, { fileType: extension as any });
       }
-    }    const prompt = `You are a highly accurate UK ESOL exam digitization assistant.
+    }    const prompt = `You are a highly accurate UK ESOL assessment and practice-material digitization assistant.
 Your goal is to extract the logical structure of this paper, preserving meaning, digitizing all questions and answers, and identifying the exact visual boundaries of all reading context materials.
 
-## 1. CRITICAL: TOKEN REDUCTION & OUTPUT FORMAT
-- MINIFY JSON: Return a single dense string with NO newlines, NO spaces outside of string values, and NO indentation.
-- PRUNE EMPTY FIELDS: Do NOT output empty arrays (\`[]\`), nulls, or unnecessary keys.
+## 1. CRITICAL: OUTPUT FORMAT
+- Return ONLY valid JSON. Do not use Markdown fences or add commentary.
 - MCQ DEDUPLICATION: For MCQs, output ONLY \`options\` and \`correctIndex\` inside \`config\`. Do NOT include a redundant \`answer\` string.
-- NON-MCQs: For \`GAP_FILL\` or \`QUESTION_ANSWER\`, emit only \`"config": { "answer": "..." }\`.
+- GAP_FILL is a choice-based digital control. Its config MUST contain at least two non-empty \`options\` and a valid zero-based \`correctIndex\`. Do not emit \`answer\` for GAP_FILL.
+- QUESTION_ANSWER is a free-text control. Its config MUST be \`{"answer":"..."}\`.
 - EVIDENCE: Keep 'evidence' ultra-short (max 2-5 words).
 - EXPLANATION: Every question except INSTRUCTION must include a concise learner-facing \`explanation\` stating why the answer is correct, based only on the document. Use an empty string only for INSTRUCTION items.
 
@@ -1044,6 +1110,15 @@ If one PDF contains candidate content mixed with assessor notes, distinguish the
 - Do NOT include MCQ options (a, b, c, d) inside the 'content' string. The options belong ONLY in 'config.options'.
 - Do NOT extract repeated headers, footers, page numbers, marking grids, or candidate detail boxes.
 - NEVER invent sections or fake questions.
+- If a worksheet states a question count, extract exactly that many numbered questions. Worked examples are not questions.
+- Lines labelled "Answer:" or "Why:" beneath a numbered item are the tutor answer key and explanation for that item. Never turn those lines into extra questions or include them in the question content.
+
+### GAP-FILL AND WORD-BOX WORKSHEETS (MANDATORY)
+- The app recognizes exactly \`__\` (two underscores) as the blank marker. Every GAP_FILL content string MUST contain exactly one \`__\` at the original blank position. NEVER output \`[gap]\`, \`[blank]\`, a long underline, or append another blank at the end.
+- Preserve bracketed grammar cues such as \`(study)\` in the sentence.
+- If the source has a shared WORD BOX, copy every word exactly into \`config.options\` for EACH numbered GAP_FILL question and set \`correctIndex\` to the printed correct answer.
+- If the source gives a base verb in brackets and a printed answer, use exactly two options: the bracketed base verb and the printed correct form. Set \`correctIndex\` accordingly.
+- If neither source choices nor a bracketed cue can provide at least two meaningful options, use QUESTION_ANSWER instead of GAP_FILL. Never create empty choices.
 
 ## 4. PAPER-TO-DIGITAL TRANSFORMATION (CRITICAL)
 Convert physical interactions into digital-friendly questions while preserving the exact meaning:
@@ -1119,14 +1194,15 @@ Return ONLY valid JSON matching this structure:
     {
       "sectionIndex": 1,
       "type": "GAP_FILL",
-      "content": "The doctor is available on [gap].",
-      "explanation": "The notice says the doctor is available on Tuesday.",
+      "content": "He __ (study) English every evening.",
+      "explanation": "With he, study changes to studies in the present simple.",
       "marks": 1,
-      "answerState": "AI_SOLVED",
+      "answerState": "PRINTED",
       "confidence": "HIGH",
-      "evidence": "Notice line 2",
+      "evidence": "Printed answer",
       "config": {
-        "answer": "Tuesday"
+        "options": ["study", "studies"],
+        "correctIndex": 1
       }
     }
   ]
@@ -1190,7 +1266,7 @@ Return ONLY valid JSON matching this structure:
               }], 
               generationConfig: { 
                 responseMimeType: 'application/json',
-                temperature: 0.1,
+                temperature: 0,
               } 
             },
             { 
@@ -1268,6 +1344,10 @@ Return ONLY valid JSON matching this structure:
       }
       throw err;
     }
+    parsed.questions = Array.isArray(parsed.questions)
+      ? parsed.questions.map((question: any) => this.normalizeImportedQuestion(question))
+      : [];
+
     // Backend Validation with Severity
     const validSectionsCount = parsed.sections ? parsed.sections.length : 0;
     const globalErrors: string[] = [];
@@ -1297,6 +1377,27 @@ Return ONLY valid JSON matching this structure:
                  globalErrors.push(msg);
              }
           }
+        }
+
+        if (q.type === 'GAP_FILL') {
+          const options = q.config?.options;
+          const gapCount = (q.content?.match(/__/g) || []).length;
+          if (!Array.isArray(options) || options.length < 2 || options.some((option: unknown) => !String(option ?? '').trim())) {
+            const msg = 'Invalid gap fill: Must have at least 2 non-empty options.';
+            q.validation.errors.push(msg);
+            globalErrors.push(msg);
+          }
+          if (gapCount !== 1) {
+            const msg = 'Invalid gap fill: Must contain exactly one __ marker.';
+            q.validation.errors.push(msg);
+            globalErrors.push(msg);
+          }
+        }
+
+        if (q.type === 'QUESTION_ANSWER' && !String(q.config?.answer ?? '').trim()) {
+          const msg = 'Missing answer for text question.';
+          q.validation.reviewRequired.push(msg);
+          globalWarnings.push(msg);
         }
         
         if (q.answerState === 'UNKNOWN') {

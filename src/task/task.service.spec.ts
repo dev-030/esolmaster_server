@@ -47,4 +47,35 @@ describe('TaskService multipart section images', () => {
 
     expect(executeRaw).toHaveBeenCalledTimes(1);
   });
+
+  it('normalizes Gemini gap-fill output into a usable choice question', () => {
+    const service = new TaskService({} as any, {} as any, {} as any);
+
+    const question = (service as any).normalizeImportedQuestion({
+      type: 'GAP_FILL',
+      content: 'He [gap] (study) English every evening. ______',
+      config: { answer: 'studies' },
+    });
+
+    expect(question).toMatchObject({
+      type: 'GAP_FILL',
+      content: 'He __ (study) English every evening.',
+      config: { options: ['study', 'studies'], correctIndex: 1 },
+    });
+  });
+
+  it('uses a text answer instead of rendering empty gap-fill choices', () => {
+    const service = new TaskService({} as any, {} as any, {} as any);
+
+    const question = (service as any).normalizeImportedQuestion({
+      type: 'GAP_FILL',
+      content: 'I __ coffee in the morning.',
+      config: { answer: 'drink' },
+    });
+
+    expect(question).toMatchObject({
+      type: 'QUESTION_ANSWER',
+      config: { answer: 'drink' },
+    });
+  });
 });
