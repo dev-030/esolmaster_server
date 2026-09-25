@@ -532,7 +532,7 @@ export class TaskService {
     QuestionType.ORDERING,
   ];
 
-  private normalizeImportedQuestion(question: any) {
+  private normalizeImportedQuestion(question: any, sectionInstruction = '') {
     const normalized = {
       ...question,
       content: typeof question?.content === 'string' ? question.content.trim() : '',
@@ -576,14 +576,18 @@ export class TaskService {
       );
     }
 
-    // Bracketed grammar cues can be converted to a deterministic two-choice
-    // digital gap without inventing unrelated distractors.
-    if (options.length < 2 && answer) {
-      const cue = normalized.content.match(/\(([^()]+)\)/)?.[1]?.trim();
-      if (cue && cue.toLowerCase() !== answer.toLowerCase()) {
-        options = [cue, answer];
-        correctIndex = 1;
-      }
+    const correctAnswer = answer || (
+      correctIndex >= 0 && correctIndex < options.length ? options[correctIndex] : ''
+    );
+    const asksForWrittenAnswer =
+      /\b(?:write|type|enter|fill|complete)\b[\s\S]{0,100}\b(?:gap|blank|answer|sentence|correct form)\b/i.test(sectionInstruction) ||
+      /\b(?:gap|blank)\b[\s\S]{0,100}\b(?:write|type|enter|fill|complete)\b/i.test(sectionInstruction) ||
+      /\([^()]+\)/.test(normalized.content);
+
+    if (asksForWrittenAnswer && correctAnswer) {
+      normalized.type = 'QUESTION_ANSWER';
+      normalized.config = { answer: correctAnswer };
+      return normalized;
     }
 
     if (foundGap && options.length >= 2 && correctIndex >= 0 && correctIndex < options.length) {
@@ -594,7 +598,7 @@ export class TaskService {
     // The app's GAP_FILL control is choice-based. Preserve an answer-only
     // source as a text question instead of rendering empty answer buttons.
     normalized.type = 'QUESTION_ANSWER';
-    normalized.config = { answer };
+    normalized.config = { answer: correctAnswer };
     return normalized;
   }
 
@@ -1095,7 +1099,7 @@ Your goal is to extract the logical structure of this paper, preserving meaning,
 ## 1. CRITICAL: OUTPUT FORMAT
 - Return ONLY valid JSON. Do not use Markdown fences or add commentary.
 - MCQ DEDUPLICATION: For MCQs, output ONLY \`options\` and \`correctIndex\` inside \`config\`. Do NOT include a redundant \`answer\` string.
-- GAP_FILL is a choice-based digital control. Its config MUST contain at least two non-empty \`options\` and a valid zero-based \`correctIndex\`. Do not emit \`answer\` for GAP_FILL.
+- GAP_FILL is a choice-based digital control. Use it ONLY when the learner must choose from explicit answer options shown for that individual question. Its config MUST contain at least two non-empty \`options\` and a valid zero-based \`correctIndex\`. Do not emit \`answer\` for GAP_FILL.
 - QUESTION_ANSWER is a free-text control. Its config MUST be \`{"answer":"..."}\`.
 - EVIDENCE: Keep 'evidence' ultra-short (max 2-5 words).
 - EXPLANATION: Every question except INSTRUCTION must include a concise learner-facing \`explanation\` stating why the answer is correct, based only on the document. Use an empty string only for INSTRUCTION items.
@@ -1113,12 +1117,13 @@ If one PDF contains candidate content mixed with assessor notes, distinguish the
 - If a worksheet states a question count, extract exactly that many numbered questions. Worked examples are not questions.
 - Lines labelled "Answer:" or "Why:" beneath a numbered item are the tutor answer key and explanation for that item. Never turn those lines into extra questions or include them in the question content.
 
-### GAP-FILL AND WORD-BOX WORKSHEETS (MANDATORY)
-- The app recognizes exactly \`__\` (two underscores) as the blank marker. Every GAP_FILL content string MUST contain exactly one \`__\` at the original blank position. NEVER output \`[gap]\`, \`[blank]\`, a long underline, or append another blank at the end.
-- Preserve bracketed grammar cues such as \`(study)\` in the sentence.
-- If the source has a shared WORD BOX, copy every word exactly into \`config.options\` for EACH numbered GAP_FILL question and set \`correctIndex\` to the printed correct answer.
-- If the source gives a base verb in brackets and a printed answer, use exactly two options: the bracketed base verb and the printed correct form. Set \`correctIndex\` accordingly.
-- If neither source choices nor a bracketed cue can provide at least two meaningful options, use QUESTION_ANSWER instead of GAP_FILL. Never create empty choices.
+### WRITTEN BLANKS VS CHOICE-BASED GAPS (MANDATORY)
+- Classify by what the learner is instructed to DO, not by the presence of a blank line.
+- If the learner must write, type, enter, complete, or fill an answer in a gap, use QUESTION_ANSWER. Keep the blank at its original position as exactly \`__\`, preserve bracketed cues such as \`(study)\`, and put only the correct written response in \`config.answer\`.
+- A shared WORD BOX is supporting material, not a separate set of answer buttons. If the instruction says to write words from the box into the gaps, use QUESTION_ANSWER for every numbered sentence. Do not copy the word box into each question's options.
+- A bracketed base verb such as \`(study)\` is a grammar cue, not an answer option. A sentence such as \`He __ (study) English every evening.\` is QUESTION_ANSWER with \`{"answer":"studies"}\`.
+- Use GAP_FILL only when the source explicitly presents selectable choices for that individual blank and asks the learner to choose/select one. Every GAP_FILL content string must contain exactly one \`__\` and must preserve the original choices; never invent distractors.
+- NEVER output \`[gap]\`, \`[blank]\`, a long underline, or append another blank at the end.
 
 ## 4. PAPER-TO-DIGITAL TRANSFORMATION (CRITICAL)
 Convert physical interactions into digital-friendly questions while preserving the exact meaning:
@@ -1193,7 +1198,7 @@ Return ONLY valid JSON matching this structure:
     },
     {
       "sectionIndex": 1,
-      "type": "GAP_FILL",
+      "type": "QUESTION_ANSWER",
       "content": "He __ (study) English every evening.",
       "explanation": "With he, study changes to studies in the present simple.",
       "marks": 1,
@@ -1201,8 +1206,7 @@ Return ONLY valid JSON matching this structure:
       "confidence": "HIGH",
       "evidence": "Printed answer",
       "config": {
-        "options": ["study", "studies"],
-        "correctIndex": 1
+        "answer": "studies"
       }
     }
   ]
@@ -1344,8 +1348,19 @@ Return ONLY valid JSON matching this structure:
       }
       throw err;
     }
+    const sectionInstructions = new Map<number, string>(
+      (Array.isArray(parsed.sections) ? parsed.sections : []).map((section: any) => [
+        section.sectionIndex,
+        String(section.instruction ?? ''),
+      ]),
+    );
     parsed.questions = Array.isArray(parsed.questions)
-      ? parsed.questions.map((question: any) => this.normalizeImportedQuestion(question))
+      ? parsed.questions.map((question: any) =>
+          this.normalizeImportedQuestion(
+            question,
+            sectionInstructions.get(question.sectionIndex) ?? '',
+          ),
+        )
       : [];
 
     // Backend Validation with Severity

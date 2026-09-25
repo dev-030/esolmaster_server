@@ -48,7 +48,7 @@ describe('TaskService multipart section images', () => {
     expect(executeRaw).toHaveBeenCalledTimes(1);
   });
 
-  it('normalizes Gemini gap-fill output into a usable choice question', () => {
+  it('keeps bracket-cue worksheets as written answers', () => {
     const service = new TaskService({} as any, {} as any, {} as any);
 
     const question = (service as any).normalizeImportedQuestion({
@@ -58,9 +58,46 @@ describe('TaskService multipart section images', () => {
     });
 
     expect(question).toMatchObject({
-      type: 'GAP_FILL',
+      type: 'QUESTION_ANSWER',
       content: 'He __ (study) English every evening.',
-      config: { options: ['study', 'studies'], correctIndex: 1 },
+      config: { answer: 'studies' },
+    });
+  });
+
+  it('keeps shared word-box worksheets as written answers', () => {
+    const service = new TaskService({} as any, {} as any, {} as any);
+
+    const question = (service as any).normalizeImportedQuestion(
+      {
+        type: 'GAP_FILL',
+        content: 'I __ coffee in the morning.',
+        config: { options: ['drink', 'speak', 'live'], correctIndex: 0 },
+      },
+      'Choose a verb from the box. Write it in the gap. Use each verb once.',
+    );
+
+    expect(question).toMatchObject({
+      type: 'QUESTION_ANSWER',
+      content: 'I __ coffee in the morning.',
+      config: { answer: 'drink' },
+    });
+  });
+
+  it('preserves genuine choice-based gap questions', () => {
+    const service = new TaskService({} as any, {} as any, {} as any);
+
+    const question = (service as any).normalizeImportedQuestion(
+      {
+        type: 'GAP_FILL',
+        content: 'I __ coffee in the morning.',
+        config: { options: ['drink', 'drinks'], correctIndex: 0 },
+      },
+      'Choose the correct option for each sentence.',
+    );
+
+    expect(question).toMatchObject({
+      type: 'GAP_FILL',
+      config: { options: ['drink', 'drinks'], correctIndex: 0 },
     });
   });
 
